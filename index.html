@@ -139,16 +139,20 @@
           </div>
           <div>
             <label for="aUser" class="block text-[12px] font-semibold muted mb-1">Nama Pengguna</label>
-            <input id="aUser" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="60" class="fld w-full h-11 px-3 rounded-xl text-[14px]">
+            <input id="aUser" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="60" class="fld w-full h-11 px-3 rounded-xl text-[14px]">
           </div>
           <div>
             <label for="aPass" class="block text-[12px] font-semibold muted mb-1">Kata Laluan</label>
-            <input id="aPass" type="password" autocomplete="current-password" class="fld w-full h-11 px-3 rounded-xl text-[14px]">
+            <input id="aPass" name="password" type="password" autocomplete="current-password" class="fld w-full h-11 px-3 rounded-xl text-[14px]">
           </div>
           <div id="wrapPass2" class="hidden">
             <label for="aPass2" class="block text-[12px] font-semibold muted mb-1">Sahkan Kata Laluan</label>
             <input id="aPass2" type="password" autocomplete="new-password" class="fld w-full h-11 px-3 rounded-xl text-[14px]">
           </div>
+          <label class="flex items-center gap-2 text-[13px] font-medium select-none cursor-pointer">
+            <input id="aIngat" type="checkbox" checked class="w-4 h-4 rounded accent-blue-700">
+            Ingat saya <span class="muted font-normal">(kekal log masuk 90 hari)</span>
+          </label>
           <div id="authMsg" class="hidden text-[12px] px-3 py-2 rounded-xl" role="alert"></div>
           <button id="btnAuth" type="submit" class="w-full h-11 rounded-xl btn-on font-semibold disabled:opacity-60">Log Masuk</button>
         </form>
@@ -173,6 +177,7 @@
 <script>
 (function(){
   var LS_URL = 'kunci_gas_url', LS_DATA = 'kunci_cache', LS_TOKEN = 'kunci_token', LS_USER = 'kunci_user';
+  var LS_INGAT = 'kunci_ingat_user'; // nama pengguna sahaja (kata laluan TIDAK disimpan)
   var DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbzXBOdUa9cS64xzGHBK2HOHY2PlPtXih-mmewoHMGL4eTJJNL2TDjoEgD5dzhqebcpX/exec';
   var KOSONG = { bilik: [], log: [], dijana: '' };
   var data = KOSONG;
@@ -272,6 +277,8 @@
     authMsg('');
   }
   function showAuth(msg, ok){
+    var diingat = lsGet(LS_INGAT);
+    if (diingat && !$('aUser').value) $('aUser').value = diingat;
     $('authScreen').classList.remove('hidden');
     if (msg) authMsg(msg, ok);
     icons();
@@ -296,16 +303,22 @@
       if (p !== $('aPass2').value) return authMsg('Pengesahan kata laluan tidak sepadan.');
     }
     var btn = $('btnAuth'), asal = btn.textContent;
+    var ingat = $('aIngat').checked;
     btn.disabled = true; btn.textContent = 'Memproses...';
     try {
       var daftar = authMode === 'daftar';
       var j = daftar
-        ? await api({ action: 'daftar', username: u, nama: n, password: p })
-        : await api({ action: 'login', username: u, password: p });
+        ? await api({ action: 'daftar', username: u, nama: n, password: p, ingat: ingat })
+        : await api({ action: 'login', username: u, password: p, ingat: ingat });
       if (!j.ok || !j.token) throw new Error(j.error || (daftar ? 'Pendaftaran gagal' : 'Log masuk gagal'));
       // Daftar & log masuk: terus masuk ke dashboard
       lsSet(LS_TOKEN, j.token);
       lsSet(LS_USER, JSON.stringify(j.pengguna || { username: u }));
+      lsSet(LS_INGAT, ingat ? u : '');
+      // Minta pelayar menawarkan "Simpan kata laluan" (disimpan tersulit oleh pelayar, bukan localStorage)
+      if (ingat && window.PasswordCredential && navigator.credentials) {
+        try { navigator.credentials.store(new PasswordCredential({ id: u, password: p, name: (j.pengguna && j.pengguna.nama) || u })).catch(function(){}); } catch(e){}
+      }
       $('aPass').value = ''; $('aPass2').value = ''; $('aNama').value = '';
       setAuthMode('login');
       hideAuth();

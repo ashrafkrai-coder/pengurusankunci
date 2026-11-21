@@ -63,7 +63,7 @@ describe('Log masuk', () => {
     p.$('aPass').value = 'rahsia123';
     p.submitAuth();
     await p.wait(120);
-    assert.deepEqual(p.calls[0].body, { action: 'login', username: 'ali', password: 'rahsia123' });
+    assert.deepEqual(p.calls[0].body, { action: 'login', username: 'ali', password: 'rahsia123', ingat: true });
     assert.equal(p.calls[0].url, DEFAULT_URL);
     assert.equal(p.calls[0].init.method, 'POST');
     assert.match(p.calls[0].init.headers['Content-Type'], /^text\/plain/);
@@ -73,6 +73,44 @@ describe('Log masuk', () => {
     assert.equal(p.$('aPass').value, '', 'kata laluan dikosongkan');
     assert.equal(p.$('sumJumlah').textContent, '3');
     assert.match(p.$('kemaskini').textContent, /Ali/);
+  });
+
+  test('Ingat saya: nama pengguna diingat & diisi semula; kata laluan TIDAK disimpan', async () => {
+    p = loadPage({
+      api: (b) => (b.action === 'login' ? { ok: true, token: 't1', pengguna: { username: 'ali', nama: 'Ali' } } : DASH)
+    });
+    assert.equal(p.$('aIngat').checked, true, 'ditanda secara lalai');
+    p.$('aUser').value = 'ali';
+    p.$('aPass').value = 'rahsia123';
+    p.submitAuth();
+    await p.wait(120);
+    assert.equal(p.w.localStorage.getItem('kunci_ingat_user'), 'ali');
+    const semua = JSON.stringify(Object.assign({}, p.w.localStorage));
+    assert.ok(!semua.includes('rahsia123'), 'kata laluan tiada dalam localStorage');
+
+    p.$('btnKeluar').click();
+    await p.wait();
+    assert.equal(p.$('aUser').value, 'ali', 'nama pengguna diisi semula selepas log keluar');
+  });
+
+  test('nama pengguna diingat diisi semasa buka app', async () => {
+    p = loadPage({ ls: { kunci_ingat_user: 'cikgu.ali' } });
+    await p.wait();
+    assert.equal(p.$('aUser').value, 'cikgu.ali');
+  });
+
+  test('Ingat saya tidak ditanda: nama tidak diingat', async () => {
+    p = loadPage({
+      ls: { kunci_ingat_user: 'lama' },
+      api: (b) => (b.action === 'login' ? { ok: true, token: 't1' } : DASH)
+    });
+    p.$('aIngat').checked = false;
+    p.$('aUser').value = 'ali';
+    p.$('aPass').value = 'rahsia123';
+    p.submitAuth();
+    await p.wait(120);
+    assert.equal(p.calls[0].body.ingat, false);
+    assert.equal(p.w.localStorage.getItem('kunci_ingat_user'), null);
   });
 
   test('gagal: mesej ralat dipaparkan', async () => {
@@ -144,7 +182,7 @@ describe('Daftar', () => {
     p.$('aPass2').value = 'rahsia123';
     p.submitAuth();
     await p.wait(120);
-    assert.deepEqual(p.calls[0].body, { action: 'daftar', username: 'ali', nama: 'Ali bin Abu', password: 'rahsia123' });
+    assert.deepEqual(p.calls[0].body, { action: 'daftar', username: 'ali', nama: 'Ali bin Abu', password: 'rahsia123', ingat: true });
     assert.deepEqual(p.calls[1].body, { action: 'getDashboard', token: 'tokBaru' });
     assert.equal(p.w.localStorage.getItem('kunci_token'), 'tokBaru');
     assert.equal(p.hidden('authScreen'), true);

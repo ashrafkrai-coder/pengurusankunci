@@ -12,6 +12,7 @@ const SH_GURU  = 'Nama_Guru';
 const SH_USER  = 'Pengguna';
 const TZ       = 'Asia/Kuala_Lumpur';
 const SESI_HARI = 7;     // tempoh sah token log masuk (hari)
+const SESI_INGAT_HARI = 90; // tempoh sesi jika "Ingat saya" ditanda
 const HASH_ITER = 500;   // bilangan ulangan hash kata laluan
 const MAX_GAGAL = 5;     // cubaan log masuk gagal sebelum dikunci 15 minit
 const DEBOUNCE_SAAT = 60; // imbasan semula oleh guru sama dalam tempoh ini diabaikan
@@ -392,16 +393,17 @@ function daftar_(b) {
     lock.releaseLock();
   }
   // Terus log masuk selepas pendaftaran
-  const s = buatSesi_({ username: username, nama: nama, peranan: 'Pentadbir' });
+  const s = buatSesi_({ username: username, nama: nama, peranan: 'Pentadbir' }, !!b.ingat);
   s.mesej = 'Pendaftaran berjaya.';
   return s;
 }
 
-function buatSesi_(u) {
+function buatSesi_(u, ingat) {
   const props = PropertiesService.getScriptProperties();
   buangSesiLuput_(props);
   const token = (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '');
-  props.setProperty('sesi_' + token, JSON.stringify({ u: u.username, exp: Date.now() + SESI_HARI * 864e5 }));
+  const hari = ingat ? SESI_INGAT_HARI : SESI_HARI;
+  props.setProperty('sesi_' + token, JSON.stringify({ u: u.username, exp: Date.now() + hari * 864e5 }));
   return { ok: true, token: token, pengguna: { username: u.username, nama: u.nama, peranan: u.peranan } };
 }
 
@@ -422,7 +424,7 @@ function login_(b) {
   }
   cache.remove(ck);
   if (u.status !== 'Aktif') throw new Error('Akaun anda telah disekat. Sila hubungi admin.');
-  return buatSesi_(u);
+  return buatSesi_(u, !!b.ingat);
 }
 
 function logout_(b) {

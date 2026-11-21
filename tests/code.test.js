@@ -398,6 +398,17 @@ describe('Pengguna: daftar & login', () => {
     assert.equal(g.props[key], undefined, 'sesi luput dibuang');
   });
 
+  test('Ingat saya: sesi 90 hari; tanpa: 7 hari', () => {
+    const g = gas();
+    const hari = (token) => (JSON.parse(g.props['sesi_' + token]).exp - Date.now()) / 864e5;
+    const a = post(g, { action: 'daftar', username: 'ali', nama: 'Ali', password: 'rahsia123', ingat: true });
+    assert.ok(Math.abs(hari(a.token) - 90) < 0.01);
+    const b = post(g, { action: 'login', username: 'ali', password: 'rahsia123' });
+    assert.ok(Math.abs(hari(b.token) - 7) < 0.01);
+    const c = post(g, { action: 'login', username: 'ali', password: 'rahsia123', ingat: true });
+    assert.ok(Math.abs(hari(c.token) - 90) < 0.01);
+  });
+
   test('token palsu ditolak', () => {
     assert.equal(post(gas(), { action: 'getDashboard', token: 'palsu' }).auth, false);
   });
