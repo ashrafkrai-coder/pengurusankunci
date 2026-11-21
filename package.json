@@ -1,0 +1,17 @@
+{
+  "name": "pengurusankunci",
+  "private": true,
+  "description": "Sistem Pengurusan Kunci Sekolah (NFC) - PWA + Google Apps Script",
+  "scripts": {
+    "build": "npm run build:css && npm run build:vendor && npm run build:icon",
+    "build:css": "tailwindcss -i src/tailwind.css -o tailwind.css --minify",
+    "build:vendor": "node -e \"require('fs').mkdirSync('vendor',{recursive:true});require('fs').copyFileSync('node_modules/lucide/dist/umd/lucide.min.js','vendor/lucide.min.js')\"",
+    "build:icon": "node scripts/gen-maskable-icon.js",
+    "test": "node --test \"tests/*.test.js\""
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0",
+    "lucide": "1.77.0",
+    "tailwindcss": "3.4.19"
+  }
+}

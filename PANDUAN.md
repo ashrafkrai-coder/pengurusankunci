@@ -27,6 +27,8 @@ Formula baris 2 (seret ke bawah):
 3. Pilih fungsi **`setupSheets`** > **Run**. Benarkan kebenaran (Authorize) pada kali pertama.
    Ini menjana 3 tab, tajuk, formula dan data contoh.
 4. Isi tab `Nama_Bilik` (ID_Kunci + nama penuh bilik) dan `Nama_Guru` dengan data sebenar.
+   `setupSheets` selamat dijalankan semula. Data sedia ada tidak dipadam.
+5. **Untuk menguji dari editor**, pilih fungsi **`ujiImbas`** > **Run** (bukan `prosesImbas`). Ia merekod satu imbasan sebenar (bilik pertama, guru pertama) dan memaparkan URL tag NFC bagi setiap kunci dalam *Execution log*. `prosesImbas` hanya dipanggil oleh halaman imbas NFC.
 
 ## Langkah B: Deploy sebagai Web App
 
@@ -49,17 +51,43 @@ Guru: sentuh telefon pada tag. Kali pertama pilih nama, selepas itu terus direko
 
 ## Langkah D: Host Dashboard PWA
 
-Folder `pwa/` mengandungi `index.html`, `manifest.json`, `sw.js`, `icon-192.png`, `icon-512.png`.
+Fail dashboard yang perlu dimuat naik: `index.html`, `manifest.json`, `sw.js`, `tailwind.css`, folder `vendor/`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `logo.png` (logo sekolah untuk halaman Log Masuk).
+
+Tailwind CSS dan ikon Lucide dihos sendiri (tiada CDN). Jika anda mengubah kelas dalam `index.html`, jana semula CSS dengan `npm run build:css`.
 Muat naik kesemuanya ke **hosting HTTPS** (Vercel, Netlify, GitHub Pages atau Cloudflare Pages). PWA tidak boleh dipasang jika dibuka terus dari fail (`file://`).
 
-1. Buka dashboard > ikon **⚙ Tetapan** > tampal URL Web App (`.../exec`) > **Simpan**.
-2. URL disimpan dalam `localStorage`, jadi tidak perlu edit kod.
-3. Pasang: *Add to Home Screen* (telefon) atau *Install App* (Chrome komputer).
+1. URL Web App lalai sudah dimasukkan dalam kod (`DEFAULT_URL` dalam `index.html`). Untuk guna URL lain: ikon **⚙ Tetapan** > tampal URL > **Simpan**. Kosongkan medan untuk kembali ke URL lalai.
+2. Pasang: *Add to Home Screen* (telefon) atau *Install App* (Chrome komputer).
+
+## Langkah E: Daftar & Log Masuk Pentadbir
+
+Dashboard kini memerlukan log masuk. Data kunci tidak lagi boleh dibaca tanpa token.
+
+1. Buka dashboard > tab **Daftar** > isi Nama Penuh, Nama Pengguna, Kata Laluan (min. 8 aksara).
+2. Akaun terus **Aktif** dan pengguna terus masuk ke dashboard. Tiada kelulusan admin diperlukan.
+3. Seterusnya guna **Log Masuk**. Sesi sah selama 7 hari.
+4. Untuk menyekat akaun: buka tab **`Pengguna`** > tukar kolum **Status** kepada apa-apa selain `Aktif` (cth `Digantung`). Sesi sedia ada terus ditolak.
+5. Selepas 5 cubaan kata laluan salah, akaun dikunci 15 minit.
+
+> **Perhatian:** sesiapa yang tahu alamat dashboard boleh mendaftar dan melihat status kunci. Semak tab `Pengguna` dari semasa ke semasa dan sekat akaun yang tidak dikenali.
+
+Kolum `Hash` dan `Salt` dalam tab `Pengguna` dijana automatik. Jangan ubah. Kata laluan tidak disimpan dalam bentuk asal.
+
+## Ujian Automatik
+
+Perlu Node.js 20+:
+
+```
+npm install
+npm test
+```
+
+Ujian bertanda TODO ialah cadangan penambahbaikan yang belum dilaksanakan.
 
 ## Nota
 
 - Telefon guru mesti menyokong NFC dan membuka pautan dalam pelayar (Chrome/Safari). Jika guru log masuk akaun Google lain dalam pelayar, Web App "Anyone" tetap boleh dibuka tanpa log masuk.
 - `localStorage` terikat pada pelayar. Jika guru bertukar pelayar atau kosongkan data pelayar, mereka perlu pilih nama sekali lagi.
 - Pautan **Tukar Pengguna** hanya menukar nama untuk imbasan akan datang, dan tidak mencipta rekod baharu.
-- Kad kunci bertukar merah jika belum dipulangkan lebih 4 jam.
+- Kad kunci menunjukkan label **lewat** (teks kuning) jika belum dipulangkan lebih 4 jam.
 - Jika ada ralat selepas deploy semula, pastikan versi Web App dikemas kini (Langkah B ayat 4).

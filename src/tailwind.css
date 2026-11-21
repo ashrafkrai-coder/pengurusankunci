@@ -1,0 +1,4 @@
+/* Sumber CSS. Jangan edit tailwind.css secara terus; jalankan: npm run build */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
