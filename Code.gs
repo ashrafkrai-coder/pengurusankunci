@@ -153,13 +153,50 @@ function bilikMap_() {
   return { map: map, order: order };
 }
 
+/**
+ * Senarai nama guru untuk halaman imbas NFC:
+ * gabungan tab Nama_Guru + Nama_Penuh akaun Aktif dalam tab Pengguna (tanpa pendua).
+ */
 function guruList_() {
-  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_GURU);
-  if (!sh || sh.getLastRow() < 2) return [];
-  return sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues()
-    .map(function (r) { return String(r[0]).trim(); })
-    .filter(function (n) { return n; })
-    .sort(function (a, b) { return a.localeCompare(b); });
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const seen = {}, out = [];
+  function add(n) {
+    n = String(n || '').trim();
+    if (!n || /^[=+\-@]/.test(n)) return;
+    const k = n.toLowerCase();
+    if (seen[k]) return;
+    seen[k] = true;
+    out.push(n);
+  }
+  const sg = ss.getSheetByName(SH_GURU);
+  if (sg && sg.getLastRow() >= 2) {
+    sg.getRange(2, 1, sg.getLastRow() - 1, 1).getValues().forEach(function (r) { add(r[0]); });
+  }
+  const su = ss.getSheetByName(SH_USER);
+  if (su && su.getLastRow() >= 2) {
+    su.getRange(2, 1, su.getLastRow() - 1, 6).getValues().forEach(function (r) {
+      if (String(r[5]).trim() === 'Aktif') add(r[1]);
+    });
+  }
+  return out.sort(function (a, b) { return a.localeCompare(b); });
+}
+
+/** Tambah nama ke tab Nama_Guru jika belum wujud (tidak sensitif huruf). */
+function tambahGuru_(nama) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sh = ss.getSheetByName(SH_GURU);
+  if (!sh) {
+    sh = ss.insertSheet(SH_GURU);
+    sh.getRange('A1:B1').setValues([['Nama_Guru', 'Jawatan']]);
+    styleHeader_(sh, 2);
+  }
+  if (sh.getLastRow() >= 2) {
+    const ada = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues().some(function (r) {
+      return String(r[0]).trim().toLowerCase() === nama.toLowerCase();
+    });
+    if (ada) return;
+  }
+  sh.appendRow([nama, '']);
 }
 
 function logRows_() {
@@ -388,6 +425,7 @@ function daftar_(b) {
     if (findUser_(username)) throw new Error('Nama pengguna sudah wujud.');
     const salt = Utilities.getUuid();
     userSheet_().appendRow([username, nama, hash_(pw, salt), salt, 'Pentadbir', 'Aktif', new Date()]);
+    tambahGuru_(nama); // nama terus tersedia di halaman imbas NFC
     SpreadsheetApp.flush();
   } finally {
     lock.releaseLock();

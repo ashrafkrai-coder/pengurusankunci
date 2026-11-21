@@ -305,6 +305,30 @@ describe('Pengguna: daftar & login', () => {
     assert.equal(post(g, { action: 'login', username: 'ali.admin', password: 'rahsia123' }).ok, true);
   });
 
+  test('daftar: nama guru auto ditambah ke Nama_Guru & boleh terus imbas NFC', () => {
+    const g = loadGas({ bilik: BILIK, guru: [], log: [] });
+    post(g, { action: 'daftar', username: 'ali', nama: 'Cikgu Ali Baru', password: 'rahsia123' });
+    assert.deepEqual([...g.sheet('Nama_Guru').data[1]], ['Cikgu Ali Baru', '']);
+    assert.match(g.ctx.imbasPage_('MAKMAL-1').getContent(), /"guru":\["Cikgu Ali Baru"\]/);
+    assert.equal(g.ctx.prosesImbas('MAKMAL-1', 'Cikgu Ali Baru').tindakan, 'Ambil');
+  });
+
+  test('daftar: tab Nama_Guru dicipta jika tiada; tiada pendua (tidak sensitif huruf)', () => {
+    const g = loadGas({ bilik: BILIK, log: [] });
+    post(g, { action: 'daftar', username: 'ali', nama: 'Cikgu Ali', password: 'rahsia123' });
+    post(g, { action: 'daftar', username: 'ali2', nama: 'CIKGU ALI', password: 'rahsia123' });
+    assert.equal(g.sheet('Nama_Guru').data.length, 2);
+    assert.deepEqual(g.sheet('Nama_Guru').data[0], ['Nama_Guru', 'Jawatan']);
+  });
+
+  test('senarai imbas termasuk akaun Aktif sedia ada; akaun disekat tidak', () => {
+    const g = loadGas({ bilik: BILIK, guru: ['Cikgu Zara'], log: [] });
+    g.ctx.userSheet_().appendRow(['lama', 'Cikgu Lama', 'h', 's', 'Pentadbir', 'Aktif', '']);
+    g.ctx.userSheet_().appendRow(['sekat', 'Cikgu Sekat', 'h', 's', 'Pentadbir', 'Digantung', '']);
+    g.ctx.userSheet_().appendRow(['zara', 'cikgu zara', 'h', 's', 'Pentadbir', 'Aktif', '']);
+    assert.deepEqual(g.call('guruList_'), ['Cikgu Lama', 'Cikgu Zara']);
+  });
+
   test('daftar menyimpan hash (bukan kata laluan asal)', () => {
     const g = gas();
     post(g, { action: 'daftar', username: 'Ali.Admin', nama: 'Ali bin Abu', password: 'rahsia123' });

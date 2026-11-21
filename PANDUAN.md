@@ -65,6 +65,7 @@ Dashboard kini memerlukan log masuk. Data kunci tidak lagi boleh dibaca tanpa to
 
 1. Buka dashboard > tab **Daftar** > isi Nama Penuh, Nama Pengguna, Kata Laluan (min. 8 aksara).
 2. Akaun terus **Aktif** dan pengguna terus masuk ke dashboard. Tiada kelulusan admin diperlukan.
+   **Nama Penuh** guru juga ditambah secara automatik ke tab `Nama_Guru`, jadi nama itu terus boleh dipilih semasa tap tag NFC.
 3. Seterusnya guna **Log Masuk**. Dengan **Ingat saya** (ditanda secara lalai), sesi kekal 90 hari dan nama pengguna diisi automatik. Tanpanya, sesi sah 7 hari.
    Kata laluan tidak disimpan oleh app. Pilih **Simpan kata laluan** apabila pelayar (Chrome/Safari) menawarkannya.
 4. Untuk menyekat akaun: buka tab **`Pengguna`** > tukar kolum **Status** kepada apa-apa selain `Aktif` (cth `Digantung`). Sesi sedia ada terus ditolak.
