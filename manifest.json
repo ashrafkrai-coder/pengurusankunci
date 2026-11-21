@@ -1,0 +1,16 @@
+{
+  "name": "Pengurusan Kunci SMK Taman Medan",
+  "short_name": "Kunci SMTM",
+  "description": "Dashboard pentadbir untuk memantau kunci bilik sekolah (NFC)",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#eef3fb",
+  "theme_color": "#eef3fb",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

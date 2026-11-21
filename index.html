@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>Pengurusan Kunci SMK Taman Medan</title>
+<meta name="theme-color" content="#eef3fb">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  :root{--bg:#eef3fb;--surface:#ffffff;--border:#d9e3f4;--ink:#0f1f3d;--muted:#6b7a99;--soft:#e4ecf9;--inv:#1d4ed8;--inv-ink:#ffffff;--inv-muted:#c3d4ff;--alert:#dc2626;--lewat:#fde68a}
+  html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+  body{font-family:'Inter',system-ui,sans-serif;-webkit-tap-highlight-color:transparent;color:var(--ink);
+    background:
+      radial-gradient(520px 260px at 100% -5%, rgba(59,130,246,.28), transparent 65%),
+      radial-gradient(420px 260px at -10% 105%, rgba(37,99,235,.14), transparent 65%),
+      linear-gradient(180deg,#f3f7fe 0%,#e8effb 100%);
+    background-attachment:fixed}
+  .surf{background:rgba(255,255,255,.85);border:1px solid var(--border);box-shadow:0 1px 2px rgba(15,31,61,.04),0 8px 18px -12px rgba(29,78,216,.35);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+  .soft{background:var(--soft)}
+  .muted{color:var(--muted)}
+  .ink{color:var(--ink)}
+  .invbox{background:linear-gradient(135deg,#3b82f6 0%,#1d4ed8 60%,#1e40af 100%);color:#fff;border:1px solid rgba(255,255,255,.18);box-shadow:0 10px 22px -8px rgba(37,99,235,.6),inset 0 1px 0 rgba(255,255,255,.25)}
+  .invbox .m{color:var(--inv-muted)}
+  .alert{color:var(--alert)}
+  .btn-on{background:linear-gradient(135deg,#3b82f6 0%,#1d4ed8 100%);color:#fff;box-shadow:0 6px 14px -6px rgba(37,99,235,.65)}
+  .spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+  .pulse-dot{animation:pd 1.8s ease-in-out infinite}@keyframes pd{0%,100%{opacity:1}50%{opacity:.25}}
+  .fade{animation:fade .25s ease}@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  input,select{color:var(--ink);outline:none}
+  input::placeholder{color:var(--muted)}
+  input:focus{border-color:var(--ink)!important}
+</style>
+</head>
+<body>
+<div class="h-[100dvh] max-w-3xl mx-auto flex flex-col px-3 gap-2.5"
+     style="padding-top:max(env(safe-area-inset-top),10px);padding-bottom:max(env(safe-area-inset-bottom),10px)">
+
+  <header class="flex-none flex items-center justify-between">
+    <div class="flex items-center gap-2.5 min-w-0">
+      <div class="w-9 h-9 rounded-xl invbox flex items-center justify-center"><i data-lucide="key-round" class="w-[18px] h-[18px]"></i></div>
+      <div class="min-w-0">
+        <h1 class="text-[14px] font-bold leading-tight">Pengurusan Kunci<span class="block text-[12px] font-semibold muted">SMK Taman Medan</span></h1>
+        <p id="kemaskini" class="text-[11px] muted leading-tight truncate">Belum dimuatkan</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-1.5">
+      <button id="btnRefresh" class="surf w-9 h-9 rounded-xl flex items-center justify-center active:scale-95 transition" aria-label="Muat Semula"><i data-lucide="refresh-cw" class="w-4 h-4"></i></button>
+      <button id="btnTetapan" class="surf w-9 h-9 rounded-xl flex items-center justify-center active:scale-95 transition" aria-label="Tetapan"><i data-lucide="settings-2" class="w-4 h-4"></i></button>
+    </div>
+  </header>
+
+  <div id="amaran" class="hidden flex-none text-[12px] px-3 py-2 rounded-xl surf alert"></div>
+
+  <section class="flex-none grid grid-cols-3 gap-2">
+    <div class="surf rounded-2xl px-3 py-2.5">
+      <div class="text-[26px] font-extrabold leading-none" id="sumJumlah">0</div>
+      <div class="text-[11px] muted font-medium mt-1.5 leading-tight">Jumlah Kunci</div>
+    </div>
+    <div class="surf rounded-2xl px-3 py-2.5">
+      <div class="text-[26px] font-extrabold leading-none" id="sumLuar" style="color:#1d4ed8">0</div>
+      <div class="text-[11px] muted font-medium mt-1.5 leading-tight">Sedang Digunakan</div>
+    </div>
+    <div class="surf rounded-2xl px-3 py-2.5">
+      <div class="text-[26px] font-extrabold leading-none" id="sumKotak">0</div>
+      <div class="text-[11px] muted font-medium mt-1.5 leading-tight">Tersedia (Di Kotak)</div>
+    </div>
+  </section>
+
+  <nav class="flex-none surf rounded-2xl p-1 grid grid-cols-2 gap-1 text-[13px] font-semibold">
+    <button data-tab="status" class="tabBtn py-2 rounded-xl flex items-center justify-center gap-1.5 transition"><i data-lucide="layout-grid" class="w-4 h-4"></i>Status Kunci</button>
+    <button data-tab="log" class="tabBtn py-2 rounded-xl flex items-center justify-center gap-1.5 transition"><i data-lucide="history" class="w-4 h-4"></i>Log & Sejarah</button>
+  </nav>
+
+  <section id="filterBar" class="hidden flex-none space-y-2">
+    <div class="flex gap-2">
+      <div class="relative flex-1 min-w-0">
+        <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 muted"></i>
+        <input id="cari" type="search" placeholder="Cari bilik / guru" class="surf w-full h-9 pl-9 pr-3 rounded-xl text-[13px]">
+      </div>
+      <input id="fTarikh" type="date" class="surf h-9 w-[132px] px-2 rounded-xl text-[12px]">
+    </div>
+    <div class="flex items-center gap-1.5 text-[12px] font-semibold">
+      <button data-st="" class="chip px-3 py-1.5 rounded-full transition">Semua</button>
+      <button data-st="Belum Pulang" class="chip px-3 py-1.5 rounded-full transition">Belum Pulang</button>
+      <button data-st="Sudah Pulang" class="chip px-3 py-1.5 rounded-full transition">Sudah Pulang</button>
+      <button id="resetFilter" class="ml-auto muted p-1.5" aria-label="Set semula"><i data-lucide="filter-x" class="w-4 h-4"></i></button>
+    </div>
+  </section>
+
+  <main id="area" class="flex-1 min-h-0 overflow-hidden"></main>
+
+  <footer id="pager" class="flex-none flex items-center justify-between text-[12px] muted h-8">
+    <span id="bilRekod"></span>
+    <div class="flex items-center gap-2">
+      <button id="prev" class="surf w-8 h-8 rounded-lg flex items-center justify-center disabled:opacity-30 active:scale-95"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
+      <span id="pageInfo" class="min-w-[44px] text-center font-semibold ink">1 / 1</span>
+      <button id="next" class="surf w-8 h-8 rounded-lg flex items-center justify-center disabled:opacity-30 active:scale-95"><i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+    </div>
+  </footer>
+</div>
+
+<div id="modal" class="hidden fixed inset-0 z-30 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+  <div class="w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-5 surf" style="padding-bottom:max(env(safe-area-inset-bottom),20px)">
+    <h2 class="font-bold text-lg mb-1">Tetapan</h2>
+    <p class="text-[13px] muted mb-3">Tampal URL Web App Google Apps Script (berakhir dengan <code>/exec</code>).</p>
+    <input id="inpUrl" type="url" placeholder="https://script.google.com/macros/s/.../exec" class="soft w-full h-11 px-3 rounded-xl text-[13px] mb-3" style="border:1px solid var(--border)">
+    <div class="flex gap-2">
+      <button id="btnBatal" class="flex-1 h-11 rounded-xl soft font-semibold">Batal</button>
+      <button id="btnSimpan" class="flex-1 h-11 rounded-xl btn-on font-semibold">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var LS_URL = 'kunci_gas_url', LS_DATA = 'kunci_cache';
+  var data = { bilik: [], log: [], dijana: '' };
+  var tabAktif = 'status', stAktif = '';
+  var page = { status: 0, log: 0 };
+  var timer = null, totalPages = 1;
+
+  var ROOM_H = 92, LOG_H = 62, GAP = 8;
+
+  var $ = function(id){ return document.getElementById(id); };
+  function esc(s){ var d=document.createElement('div'); d.textContent = s==null?'':s; return d.innerHTML; }
+  function icons(){ if (window.lucide) lucide.createIcons(); }
+  function getUrl(){ try { return localStorage.getItem(LS_URL) || ''; } catch(e){ return ''; } }
+
+  /* ---------- Format masa ---------- */
+  function hm(d){ return d.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', hour12:false }); }
+  function sameDay(a,b){ return a.toDateString() === b.toDateString(); }
+  function fmtShort(iso){
+    if (!iso) return '';
+    var d = new Date(iso); if (isNaN(d)) return '';
+    if (sameDay(d, new Date())) return hm(d);
+    return d.toLocaleDateString('ms-MY', { day:'2-digit', month:'short' }) + ' ' + hm(d);
+  }
+  function fmtDur(iso){
+    var ms = Date.now() - new Date(iso).getTime();
+    if (!iso || isNaN(ms) || ms < 0) return '-';
+    var m = Math.floor(ms/60000), h = Math.floor(m/60), d = Math.floor(h/24);
+    if (d > 0) return d + 'h ' + (h%24) + 'j';
+    if (h > 0) return h + 'j ' + (m%60) + 'm';
+    return m + ' min';
+  }
+  function localDateStr(iso){
+    var d = new Date(iso); if (isNaN(d)) return '';
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  }
+
+  /* ---------- Muat data ---------- */
+  function showWarn(msg){ var a=$('amaran'); if(!msg){a.classList.add('hidden');return;} a.textContent=msg; a.classList.remove('hidden'); layout(); }
+
+  async function muat(){
+    var url = getUrl();
+    if (!url) { showWarn('URL Web App belum ditetapkan. Tekan ikon tetapan.'); openModal(); return; }
+    var ic = $('btnRefresh').querySelector('svg'); if (ic) ic.classList.add('spin');
+    try {
+      var res = await fetch(url + (url.indexOf('?')>-1?'&':'?') + 'action=getDashboard&t=' + Date.now());
+      var j = await res.json();
+      if (!j.ok) throw new Error(j.error || 'Respons tidak sah');
+      data = j;
+      try { localStorage.setItem(LS_DATA, JSON.stringify(j)); } catch(e){}
+      showWarn('');
+    } catch (err) {
+      showWarn('Gagal memuatkan data: ' + err.message + '. Memaparkan data tersimpan.');
+      try { var c = JSON.parse(localStorage.getItem(LS_DATA)); if (c) data = c; } catch(e){}
+    } finally {
+      var ic2 = $('btnRefresh').querySelector('svg'); if (ic2) ic2.classList.remove('spin');
+    }
+    render();
+  }
+
+  /* ---------- Kapasiti halaman ---------- */
+  function cols(){ var w = window.innerWidth; return w < 640 ? 2 : (w < 900 ? 3 : 3); }
+  function capacity(itemH, c){
+    var h = $('area').clientHeight;
+    var rows = Math.max(1, Math.floor((h + GAP) / (itemH + GAP)));
+    return rows * c;
+  }
+
+  /* ---------- Render ---------- */
+  function render(){
+    var luar = data.bilik.filter(function(b){ return b.status === 'Ambil'; }).length;
+    $('sumJumlah').textContent = data.bilik.length;
+    $('sumLuar').textContent = luar;
+    $('sumKotak').textContent = data.bilik.length - luar;
+    $('kemaskini').textContent = data.dijana ? 'Dikemas kini ' + hm(new Date(data.dijana)) : 'Belum dimuatkan';
+    renderArea();
+  }
+
+  function filteredLog(){
+    var q = $('cari').value.trim().toLowerCase();
+    var tarikh = $('fTarikh').value;
+    return data.log.filter(function(r){
+      if (stAktif && r.status !== stAktif) return false;
+      if (tarikh) {
+        var t1 = r.masaAmbil ? localDateStr(r.masaAmbil) : '', t2 = r.masaPulang ? localDateStr(r.masaPulang) : '';
+        if (t1 !== tarikh && t2 !== tarikh) return false;
+      }
+      if (q && (r.bilik + ' ' + r.guru + ' ' + r.idKunci).toLowerCase().indexOf(q) === -1) return false;
+      return true;
+    });
+  }
+
+  function renderArea(){
+    var area = $('area'), html = '', total = 0, per = 1;
+
+    if (tabAktif === 'status') {
+      var list = data.bilik.slice().sort(function(a,b){
+        if (a.status !== b.status) return a.status === 'Ambil' ? -1 : 1;
+        return a.nama.localeCompare(b.nama);
+      });
+      total = list.length;
+      var c = cols(); per = capacity(ROOM_H, c);
+      totalPages = Math.max(1, Math.ceil(total / per));
+      page.status = Math.min(page.status, totalPages - 1);
+      var slice = list.slice(page.status * per, page.status * per + per);
+      html = slice.length
+        ? '<div class="grid gap-2 fade" style="grid-template-columns:repeat(' + c + ',minmax(0,1fr))">' + slice.map(roomCard).join('') + '</div>'
+        : empty('Tiada data bilik.');
+      $('bilRekod').textContent = total + ' bilik';
+    } else {
+      var rows = filteredLog();
+      total = rows.length; per = capacity(LOG_H, 1);
+      totalPages = Math.max(1, Math.ceil(total / per));
+      page.log = Math.min(page.log, totalPages - 1);
+      var s2 = rows.slice(page.log * per, page.log * per + per);
+      html = s2.length
+        ? '<div class="flex flex-col gap-2 fade">' + s2.map(logRow).join('') + '</div>'
+        : empty('Tiada rekod sepadan.');
+      $('bilRekod').textContent = total + ' rekod';
+    }
+
+    area.innerHTML = html;
+    var p = page[tabAktif];
+    $('pageInfo').textContent = (p + 1) + ' / ' + totalPages;
+    $('prev').disabled = p <= 0;
+    $('next').disabled = p >= totalPages - 1;
+    icons();
+  }
+
+  function empty(t){
+    return '<div class="h-full flex flex-col items-center justify-center muted text-sm gap-2"><i data-lucide="inbox" class="w-8 h-8"></i>' + t + '</div>';
+  }
+
+  function roomCard(b){
+    if (b.status === 'Ambil') {
+      var lama = Date.now() - new Date(b.masaAmbil).getTime();
+      var lewat = lama >= 4*3600*1000;
+      return '<div class="invbox rounded-2xl p-3 flex flex-col justify-between overflow-hidden" style="height:' + ROOM_H + 'px">' +
+        '<div class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full pulse-dot flex-none" style="background:var(--inv-ink)"></span><span class="text-[13px] font-bold truncate">' + esc(b.nama) + '</span></div>' +
+        '<div class="flex items-center gap-1.5 text-[12px] min-w-0"><i data-lucide="user" class="w-3.5 h-3.5 flex-none"></i><span class="truncate">' + esc(b.pemegang) + '</span></div>' +
+        '<div class="flex items-center justify-between text-[11px]"><span class="flex items-center gap-1 font-bold" ' + (lewat ? 'style="color:var(--lewat)"' : '') + '><i data-lucide="timer" class="w-3.5 h-3.5"></i>' + fmtDur(b.masaAmbil) + (lewat ? ' · lewat' : '') + '</span><span class="m">sejak ' + fmtShort(b.masaAmbil) + '</span></div></div>';
+    }
+    return '<div class="surf rounded-2xl p-3 flex flex-col justify-between overflow-hidden" style="height:' + ROOM_H + 'px">' +
+      '<div class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full flex-none" style="border:1.5px solid var(--muted)"></span><span class="text-[13px] font-bold truncate">' + esc(b.nama) + '</span></div>' +
+      '<div class="flex items-center gap-1.5 text-[12px] font-semibold"><i data-lucide="check" class="w-4 h-4"></i>Tersedia</div>' +
+      '<div class="text-[11px] muted">Di dalam kotak kunci</div></div>';
+  }
+
+  function logRow(r){
+    var belum = r.status === 'Belum Pulang';
+    var dot = belum ? '<span class="w-2 h-2 rounded-full flex-none" style="background:var(--ink)"></span>'
+                    : '<span class="w-2 h-2 rounded-full flex-none" style="border:1.5px solid var(--muted)"></span>';
+    var pulang = belum
+      ? '<span class="font-bold">Belum pulang</span>'
+      : '<span class="muted">Pulang ' + (fmtShort(r.masaPulang) || '-') + '</span>';
+    return '<div class="surf rounded-2xl px-3 flex items-center gap-3 overflow-hidden" style="height:' + LOG_H + 'px">' + dot +
+      '<div class="flex-1 min-w-0"><div class="text-[13px] font-bold truncate">' + esc(r.bilik) + '</div>' +
+      '<div class="text-[12px] muted truncate">' + esc(r.guru) + '</div></div>' +
+      '<div class="text-right text-[11px] leading-snug flex-none"><div class="muted">Ambil ' + (fmtShort(r.masaAmbil) || '-') + '</div><div>' + pulang + '</div></div></div>';
+  }
+
+  /* ---------- Tab & penapis ---------- */
+  function styleTabs(){
+    document.querySelectorAll('.tabBtn').forEach(function(b){
+      var on = b.dataset.tab === tabAktif;
+      b.className = 'tabBtn py-2 rounded-xl flex items-center justify-center gap-1.5 transition ' + (on ? 'btn-on' : 'muted');
+    });
+    document.querySelectorAll('.chip').forEach(function(c){
+      var on = c.dataset.st === stAktif;
+      c.className = 'chip px-3 py-1.5 rounded-full transition ' + (on ? 'btn-on' : 'surf muted');
+    });
+  }
+  function setTab(t){
+    tabAktif = t;
+    $('filterBar').classList.toggle('hidden', t !== 'log');
+    styleTabs(); icons();
+    requestAnimationFrame(renderArea);
+  }
+  document.querySelectorAll('.tabBtn').forEach(function(b){ b.onclick = function(){ setTab(b.dataset.tab); }; });
+  document.querySelectorAll('.chip').forEach(function(c){ c.onclick = function(){ stAktif = c.dataset.st; page.log = 0; styleTabs(); renderArea(); }; });
+  ['cari','fTarikh'].forEach(function(id){ $(id).addEventListener('input', function(){ page.log = 0; renderArea(); }); });
+  $('resetFilter').onclick = function(){ $('cari').value=''; $('fTarikh').value=''; stAktif=''; page.log=0; styleTabs(); renderArea(); };
+
+  /* ---------- Pager & swipe ---------- */
+  function go(d){ var n = page[tabAktif] + d; if (n < 0 || n > totalPages - 1) return; page[tabAktif] = n; renderArea(); }
+  $('prev').onclick = function(){ go(-1); };
+  $('next').onclick = function(){ go(1); };
+  var sx = 0, sy = 0;
+  $('area').addEventListener('touchstart', function(e){ sx = e.touches[0].clientX; sy = e.touches[0].clientY; }, { passive: true });
+  $('area').addEventListener('touchend', function(e){
+    var dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy;
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) go(dx < 0 ? 1 : -1);
+  }, { passive: true });
+
+  /* ---------- Susun semula bila saiz berubah ---------- */
+  function layout(){ requestAnimationFrame(renderArea); }
+  window.addEventListener('resize', layout);
+  window.addEventListener('orientationchange', layout);
+  if (window.ResizeObserver) new ResizeObserver(layout).observe($('area'));
+
+  /* ---------- Tetapan ---------- */
+  function openModal(){ $('inpUrl').value = getUrl(); $('modal').classList.remove('hidden'); }
+  function closeModal(){ $('modal').classList.add('hidden'); }
+  $('btnTetapan').onclick = openModal;
+  $('btnBatal').onclick = closeModal;
+  $('btnSimpan').onclick = function(){
+    var v = $('inpUrl').value.trim();
+    if (v && !/^https:\/\/script\.google\.com\/.+/.test(v)) { alert('URL mesti bermula dengan https://script.google.com/'); return; }
+    try { localStorage.setItem(LS_URL, v); } catch(e){}
+    closeModal(); muat();
+  };
+  $('btnRefresh').onclick = muat;
+
+  /* ---------- Auto-refresh 30 saat ---------- */
+  timer = setInterval(function(){ if (!document.hidden && getUrl()) muat(); }, 30000);
+  setInterval(function(){ if (!document.hidden && tabAktif === 'status') renderArea(); }, 60000);
+  document.addEventListener('visibilitychange', function(){ if (!document.hidden && getUrl()) muat(); });
+
+  /* ---------- Mula ---------- */
+  try { var c = JSON.parse(localStorage.getItem(LS_DATA)); if (c && c.bilik) data = c; } catch(e){}
+  styleTabs(); icons();
+  requestAnimationFrame(function(){ render(); });
+  if (getUrl()) muat(); else showWarn('URL Web App belum ditetapkan. Tekan ikon tetapan.');
+
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function(){});
+})();
+</script>
+</body>
+</html>
