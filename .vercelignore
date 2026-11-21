@@ -1,0 +1,11 @@
+# Vercel hanya menghidangkan fail statik PWA. Fail pembangunan di bawah tidak dihantar,
+# jadi Vercel tidak menjalankan "npm run build" (CSS/ikon/vendor sudah di-commit).
+node_modules
+package.json
+package-lock.json
+tailwind.config.js
+src
+scripts
+tests
+Code.gs
+PANDUAN.md
