@@ -16,6 +16,7 @@ const SESI_INGAT_HARI = 90; // tempoh sesi jika "Ingat saya" ditanda
 const HASH_ITER = 500;   // bilangan ulangan hash kata laluan
 const MAX_GAGAL = 5;     // cubaan log masuk gagal sebelum dikunci 15 minit
 const DEBOUNCE_SAAT = 60; // imbasan semula oleh guru sama dalam tempoh ini diabaikan
+const FMT_SHEET = 'dd/mm/yyyy h:mm:ss AM/PM'; // format masa 12 jam dalam Google Sheets
 
 /* ============================================================
  *  SETUP — selamat dijalankan semula: data sedia ada TIDAK dipadam.
@@ -46,14 +47,14 @@ function setupSheets() {
   sh.getRange(2, 3, rows, 1).setFormulas(fC);
   sh.getRange(2, 4, rows, 1).setFormulas(fD);
   sh.getRange(2, 5, rows, 1).setFormulas(fE);
-  sh.getRange(2, 5, rows, 1).setNumberFormat('dd/mm/yyyy hh:mm:ss');
+  sh.getRange(2, 5, rows, 1).setNumberFormat(FMT_SHEET);
   styleHeader_(sh, 5);
   sh.setColumnWidths(1, 5, 170);
 
   // --- Log_Imbas ---
   sh = ss.getSheetByName(SH_LOG) || ss.insertSheet(SH_LOG);
   sh.getRange('A1:D1').setValues([['Masa', 'ID_Kunci', 'Nama_Guru', 'Tindakan']]);
-  sh.getRange('A2:A').setNumberFormat('dd/mm/yyyy hh:mm:ss');
+  sh.getRange('A2:A').setNumberFormat(FMT_SHEET);
   styleHeader_(sh, 4);
   sh.setColumnWidths(1, 4, 170);
 
@@ -135,6 +136,13 @@ function json_(obj) {
 
 function iso_(d) {
   return (d instanceof Date && !isNaN(d)) ? Utilities.formatDate(d, TZ, "yyyy-MM-dd'T'HH:mm:ssXXX") : '';
+}
+
+/** Masa untuk paparan, format 12 jam dengan waktu: "21/11/2026 8:05 pagi" */
+function masa12_(d) {
+  const jam = Number(Utilities.formatDate(d, TZ, 'H'));
+  const waktu = jam < 12 ? 'pagi' : jam < 14 ? 'T/hari' : jam < 19 ? 'petang' : 'malam';
+  return Utilities.formatDate(d, TZ, 'dd/MM/yyyy h:mm') + ' ' + waktu;
 }
 
 /* ============================================================
@@ -290,14 +298,14 @@ function prosesImbas(kunci, namaGuru) {
         bilik: b.nama,
         tindakan: last.tindakan,
         guru: last.guru,
-        masa: Utilities.formatDate(last.masa, TZ, 'dd/MM/yyyy HH:mm:ss')
+        masa: masa12_(last.masa)
       };
     }
 
     const tindakan = (last && last.tindakan === 'Ambil') ? 'Pulang' : 'Ambil';
     const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_LOG);
     sh.appendRow([now, b.id, guru, tindakan]);
-    sh.getRange(sh.getLastRow(), 1).setNumberFormat('dd/mm/yyyy hh:mm:ss');
+    sh.getRange(sh.getLastRow(), 1).setNumberFormat(FMT_SHEET);
     SpreadsheetApp.flush();
 
     return {
@@ -305,7 +313,7 @@ function prosesImbas(kunci, namaGuru) {
       bilik: b.nama,
       tindakan: tindakan,
       guru: guru,
-      masa: Utilities.formatDate(now, TZ, 'dd/MM/yyyy HH:mm:ss')
+      masa: masa12_(now)
     };
   } finally {
     lock.releaseLock();
@@ -374,7 +382,7 @@ function userSheet_() {
   if (!sh) {
     sh = ss.insertSheet(SH_USER);
     sh.getRange('A1:G1').setValues([['Nama_Pengguna', 'Nama_Penuh', 'Hash', 'Salt', 'Peranan', 'Status', 'Tarikh_Daftar']]);
-    sh.getRange('G2:G').setNumberFormat('dd/mm/yyyy hh:mm:ss');
+    sh.getRange('G2:G').setNumberFormat(FMT_SHEET);
     styleHeader_(sh, 7);
     sh.setColumnWidths(1, 7, 160);
   }
@@ -510,7 +518,7 @@ function dashboardAuth_(token) {
 const HTML_IMBAS = '<!DOCTYPE html><html lang="ms"><head><base target="_top"><meta charset="utf-8">' +
 '<style>' +
 '*{box-sizing:border-box}body{margin:0;font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0f172a;color:#fff;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}' +
-'.card{background:#fff;color:#0f172a;border-radius:20px;padding:28px 22px;width:100%;max-width:400px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,.4)}' +
+'.card{background:#fff;color:#0f172a;border-radius:20px;padding:28px 22px;width:100%;max-width:400px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,.4);overflow-wrap:anywhere}' +
 '.ico{width:84px;height:84px;border-radius:50%;margin:0 auto 14px;display:flex;align-items:center;justify-content:center;font-size:46px;color:#fff}' +
 '.ok-ambil{background:#ea580c}.ok-pulang{background:#16a34a}.err{background:#dc2626}.wait{background:#64748b}' +
 'h1{font-size:15px;margin:0 0 4px;color:#64748b;font-weight:600;letter-spacing:.5px;text-transform:uppercase}' +

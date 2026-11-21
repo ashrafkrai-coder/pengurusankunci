@@ -86,9 +86,9 @@ function formatDate(d, _tz, fmt) {
   const p = (n, l = 2) => String(n).padStart(l, '0');
   const map = {
     yyyy: p(s.getUTCFullYear(), 4), MM: p(s.getUTCMonth() + 1), dd: p(s.getUTCDate()),
-    HH: p(s.getUTCHours()), mm: p(s.getUTCMinutes()), ss: p(s.getUTCSeconds()), XXX: '+08:00'
+    HH: p(s.getUTCHours()), H: String(s.getUTCHours()), h: String(s.getUTCHours() % 12 || 12), mm: p(s.getUTCMinutes()), ss: p(s.getUTCSeconds()), XXX: '+08:00'
   };
-  return fmt.replace(/yyyy|MM|dd|HH|mm|ss|XXX|'[^']*'/g, (t) => (t[0] === "'" ? t.slice(1, -1) : map[t]));
+  return fmt.replace(/yyyy|MM|dd|HH|H|h|mm|ss|XXX|'[^']*'/g, (t) => (t[0] === "'" ? t.slice(1, -1) : map[t]));
 }
 
 /**

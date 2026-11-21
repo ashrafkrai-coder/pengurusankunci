@@ -144,7 +144,25 @@ describe('prosesImbas', () => {
     assert.equal(r.ok, true);
     assert.equal(r.bilik, 'Makmal Komputer 1');
     assert.equal(r.guru, 'Cikgu Ali');
-    assert.match(r.masa, /^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}:\d{2}$/);
+    assert.match(r.masa, /^\d{2}\/\d{2}\/\d{4} \d{1,2}:\d{2} (pagi|T\/hari|petang|malam)$/, 'format 12 jam');
+  });
+
+  test('masa12_: 12 jam dengan waktu pagi / T/hari / petang / malam (zon +08:00)', () => {
+    const g = gas();
+    const m = (iso) => g.ctx.masa12_(g.D(iso));
+    assert.equal(m('2026-11-20T16:30:00Z'), '21/11/2026 12:30 pagi');        // 00:30 MYT
+    assert.equal(m('2026-11-21T00:05:00Z'), '21/11/2026 8:05 pagi');         // 08:05
+    assert.equal(m('2026-11-21T03:59:00Z'), '21/11/2026 11:59 pagi');        // 11:59
+    assert.equal(m('2026-11-21T04:00:00Z'), '21/11/2026 12:00 T/hari'); // 12:00
+    assert.equal(m('2026-11-21T05:59:00Z'), '21/11/2026 1:59 T/hari');  // 13:59
+    assert.equal(m('2026-11-21T06:00:00Z'), '21/11/2026 2:00 petang');       // 14:00
+    assert.equal(m('2026-11-21T10:59:00Z'), '21/11/2026 6:59 petang');       // 18:59
+    assert.equal(m('2026-11-21T11:00:00Z'), '21/11/2026 7:00 malam');        // 19:00
+    assert.equal(m('2026-11-21T13:45:00Z'), '21/11/2026 9:45 malam');        // 21:45
+  });
+
+  test('format masa Google Sheets ialah 12 jam (AM/PM)', () => {
+    assert.match(gas().get('FMT_SHEET'), /h:mm:ss AM\/PM/);
   });
 
   test('kunci tidak wujud: ralat', () => {

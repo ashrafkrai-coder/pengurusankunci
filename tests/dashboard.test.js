@@ -222,6 +222,25 @@ describe('Dashboard (sudah log masuk)', () => {
     assert.equal(p.$('bilBilik').textContent, '3 bilik');
   });
 
+  test('semua masa dipapar 12 jam dengan pagi / T/hari / petang / malam', async () => {
+    const d = JSON.parse(JSON.stringify(DASH));
+    const jam = (h, m) => { const x = new Date(); x.setHours(h, m, 0, 0); return x.toISOString(); };
+    d.dijana = jam(21, 30);
+    d.bilik[1].masaAmbil = jam(8, 5);
+    d.log = [
+      { idKunci: 'A', bilik: 'Bilik A', guru: 'Cikgu Ali', masaAmbil: jam(8, 5), masaPulang: jam(21, 30), status: 'Sudah Pulang' },
+      { idKunci: 'C', bilik: 'Bilik C', guru: 'Cikgu Bala', masaAmbil: jam(12, 15), masaPulang: jam(15, 40), status: 'Sudah Pulang' }
+    ];
+    p = loadPage({ ls: login, api: () => d });
+    await p.wait(120);
+    assert.equal(p.$('kemaskini').textContent, '9:30 malam');
+    assert.match(p.$('areaStatus').textContent, /Diambil 8:05 pagi/);
+    p.w.document.querySelector('[data-tab="log"]').click();
+    assert.match(p.$('area').textContent, /Ambil 8:05 pagi.*Pulang 9:30 malam/);
+    assert.match(p.$('area').textContent, /Ambil 12:15 T\/hari.*Pulang 3:40 petang/);
+    assert.doesNotMatch(p.$('area').textContent + p.$('areaStatus').textContent, /\b(2[0-3]|1[3-9]):\d{2}\b/, 'tiada masa 24 jam');
+  });
+
   test('salam, avatar inisial & helaian Akaun', async () => {
     p = loadPage({ ls: { kunci_token: 'tok', kunci_user: JSON.stringify({ username: 'ali', nama: 'Cikgu Ali bin Abu' }) }, api: () => DASH });
     await p.wait(120);
@@ -257,6 +276,34 @@ describe('Dashboard (sudah log masuk)', () => {
     const pertama = p.$('areaStatus').querySelector('.kad');
     assert.match(pertama.textContent, /Bilik A/, 'kunci lewat paling atas');
     assert.match(pertama.textContent, /Lewat · 5j/);
+  });
+
+  test('nama panjang dipotong dalam kad (tidak melimpah); nama penuh dalam title', async () => {
+    const panjang = 'Cikgu Muhammad Nur Ikmal Hakimi bin Abdul Rahman';
+    const d = JSON.parse(JSON.stringify(DASH));
+    d.bilik[1].pemegang = panjang;
+    p = loadPage({ ls: login, api: () => d });
+    await p.wait(120);
+    const grid = p.$('areaStatus').firstElementChild;
+    assert.match(grid.className, /\bgrid-cols-1\b/, 'lajur grid dihadkan (minmax(0,1fr))');
+    const kad = p.$('areaStatus').querySelector('.kad[data-status="Ambil"]');
+    assert.match(kad.className, /\bmin-w-0\b/);
+    assert.match(kad.className, /\boverflow-hidden\b/);
+    const nama = kad.querySelector('.pemegang');
+    assert.match(nama.className, /\bline-clamp-2\b/, 'nama turun ke 2 baris, kemudian dipotong');
+    assert.match(nama.className, /\bbreak-words\b/);
+    assert.match(nama.className, /\bmin-w-0\b/);
+    assert.equal(nama.getAttribute('title'), panjang);
+  });
+
+  test('tanda petikan dalam nama tidak boleh menyuntik atribut', async () => {
+    const d = JSON.parse(JSON.stringify(DASH));
+    d.bilik[1].pemegang = 'x" onmouseover="alert(1)';
+    p = loadPage({ ls: login, api: () => d });
+    await p.wait(120);
+    const nama = p.$('areaStatus').querySelector('.pemegang');
+    assert.equal(nama.getAttribute('onmouseover'), null);
+    assert.equal(nama.getAttribute('title'), 'x" onmouseover="alert(1)');
   });
 
   test('nama bilik/guru di-escape (tiada XSS)', async () => {
