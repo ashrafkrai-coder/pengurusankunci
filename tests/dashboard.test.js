@@ -72,7 +72,7 @@ describe('Log masuk', () => {
     assert.equal(p.hidden('authScreen'), true);
     assert.equal(p.$('aPass').value, '', 'kata laluan dikosongkan');
     assert.equal(p.$('sumJumlah').textContent, '3');
-    assert.match(p.$('kemaskini').textContent, /Ali/);
+    assert.match(p.$('salam').textContent, /Ali/);
   });
 
   test('Ingat saya: nama pengguna diingat & diisi semula; kata laluan TIDAK disimpan', async () => {
@@ -216,16 +216,58 @@ describe('Dashboard (sudah log masuk)', () => {
     assert.equal(p.$('sumJumlah').textContent, '3');
     assert.equal(p.$('sumLuar').textContent, '1');
     assert.equal(p.$('sumKotak').textContent, '2');
-    assert.match(p.$('area').firstElementChild.firstElementChild.className, /invbox/);
+    const kad = [...p.$('areaStatus').querySelectorAll('.kad')];
+    assert.equal(kad.length, 3);
+    assert.equal(kad[0].dataset.status, 'Ambil', 'kunci digunakan di atas');
+    assert.equal(p.$('bilBilik').textContent, '3 bilik');
+  });
+
+  test('salam, avatar inisial & helaian Akaun', async () => {
+    p = loadPage({ ls: { kunci_token: 'tok', kunci_user: JSON.stringify({ username: 'ali', nama: 'Cikgu Ali bin Abu' }) }, api: () => DASH });
+    await p.wait(120);
+    assert.match(p.$('salam').textContent, /^Selamat (pagi|tengah hari|petang|malam), Cikgu Ali$/, "nama tanpa bin ...");
+    assert.equal(p.$('btnAvatar').textContent, 'A', 'gelaran Cikgu & "bin" diabaikan');
+    assert.equal(p.hidden('sheetAkaun'), true);
+    p.$('navAkaun').click();
+    assert.equal(p.hidden('sheetAkaun'), false);
+    assert.equal(p.$('akUser').textContent, '@ali');
+    p.$('tutupAkaun').click();
+    assert.equal(p.hidden('sheetAkaun'), true);
+  });
+
+  test('penapis status: Digunakan / Tersedia', async () => {
+    p = loadPage({ ls: login, api: () => DASH });
+    await p.wait(120);
+    p.w.document.querySelector('[data-sf="Ambil"]').click();
+    assert.equal(p.$('areaStatus').querySelectorAll('.kad').length, 1);
+    p.w.document.querySelector('[data-sf="Pulang"]').click();
+    assert.equal(p.$('areaStatus').querySelectorAll('.kad').length, 2);
+    p.w.document.querySelector('[data-sf=""]').click();
+    assert.equal(p.$('areaStatus').querySelectorAll('.kad').length, 3);
+  });
+
+  test('kunci lewat (> 4 jam) dikira & ditanda', async () => {
+    const lama = new Date(Date.now() - 5 * 3600e3).toISOString();
+    const d = JSON.parse(JSON.stringify(DASH));
+    d.bilik[0] = { idKunci: 'A', nama: 'Bilik A', status: 'Ambil', pemegang: 'Cikgu Ali', masaAmbil: lama };
+    d.bilik[1].masaAmbil = new Date(Date.now() - 10 * 60e3).toISOString(); // baru 10 minit: tidak lewat
+    p = loadPage({ ls: login, api: () => d });
+    await p.wait(120);
+    assert.equal(p.$('sumLewat').textContent, '1');
+    const pertama = p.$('areaStatus').querySelector('.kad');
+    assert.match(pertama.textContent, /Bilik A/, 'kunci lewat paling atas');
+    assert.match(pertama.textContent, /Lewat · 5j/);
   });
 
   test('nama bilik/guru di-escape (tiada XSS)', async () => {
     p = loadPage({ ls: login, api: () => DASH });
     await p.wait(120);
-    const area = p.$('area');
-    assert.equal(area.querySelector('img'), null);
-    assert.equal(area.querySelector('b'), null);
-    assert.match(area.textContent, /<b>Jahat<\/b>/);
+    p.w.document.querySelector('[data-tab="log"]').click();
+    for (const area of [p.$('areaStatus'), p.$('area')]) {
+      assert.equal(area.querySelector('img'), null);
+      assert.equal(area.querySelector('b'), null);
+    }
+    assert.match(p.$('areaStatus').textContent, /<b>Jahat<\/b>/);
   });
 
   test('sesi tamat (auth:false): log keluar dan buang cache', async () => {
@@ -297,16 +339,38 @@ describe('Dashboard (sudah log masuk)', () => {
     assert.match(p.$('area').textContent, /Cikgu Bala/);
   });
 
-  test('pager: butang Seterusnya/Sebelum', async () => {
+  test('tab bertukar: Status ↔ Log', async () => {
     p = loadPage({ ls: login, api: () => DASH });
     await p.wait(120);
+    assert.equal(p.hidden('tabStatus'), false);
+    assert.equal(p.hidden('tabLog'), true);
     p.w.document.querySelector('[data-tab="log"]').click();
-    await p.wait();
-    // jsdom tiada layout -> kapasiti 1 baris/halaman
-    assert.equal(p.$('pageInfo').textContent, '1 / 2');
-    assert.equal(p.$('prev').disabled, true);
-    p.$('next').click();
-    assert.equal(p.$('pageInfo').textContent, '2 / 2');
-    assert.equal(p.$('next').disabled, true);
+    assert.equal(p.hidden('tabStatus'), true);
+    assert.equal(p.hidden('tabLog'), false);
+    assert.ok(p.w.document.querySelector('[data-tab="log"]').classList.contains('on'));
+  });
+
+  test('log dikumpul ikut hari + butang Muat lagi (30 setiap kali)', async () => {
+    const d = JSON.parse(JSON.stringify(DASH));
+    const kini = Date.now();
+    d.log = Array.from({ length: 45 }, (_, i) => ({
+      idKunci: 'A', bilik: 'Bilik ' + i, guru: 'Cikgu ' + i,
+      masaAmbil: new Date(kini - i * 3600e3).toISOString(), masaPulang: new Date(kini - i * 3600e3 + 60e3).toISOString(),
+      status: 'Sudah Pulang'
+    }));
+    p = loadPage({ ls: login, api: () => d });
+    await p.wait(120);
+    p.w.document.querySelector('[data-tab="log"]').click();
+    const baris = () => p.$('area').querySelectorAll('.divide-y > div').length;
+    assert.equal(p.$('bilRekod').textContent, '45 rekod');
+    assert.equal(baris(), 30);
+    assert.match(p.$('area').textContent, /Hari ini/);
+    assert.equal(p.hidden('muatLagi'), false);
+    p.$('muatLagi').click();
+    assert.equal(baris(), 45);
+    assert.equal(p.hidden('muatLagi'), true);
+    p.$('cari').value = 'Bilik 44';
+    p.$('cari').dispatchEvent(new p.w.Event('input'));
+    assert.equal(baris(), 1, 'penapis menetapkan semula had');
   });
 });
