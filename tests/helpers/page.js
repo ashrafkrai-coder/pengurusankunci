@@ -21,6 +21,7 @@ function loadPage(o = {}) {
     beforeParse(w) {
       Object.entries(o.ls || {}).forEach(([k, v]) => w.localStorage.setItem(k, v));
       w.alert = (m) => alerts.push(m);
+      w.scrollTo = () => {};
       w.fetch = async (url, init) => {
         const body = init && init.body ? JSON.parse(init.body) : null;
         calls.push({ url, init, body });

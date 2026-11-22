@@ -47,7 +47,9 @@ https://script.google.com/macros/s/XXXXXXXX/exec?kunci=MAKMAL-1
 
 `MAKMAL-1` mesti sama dengan `ID_Kunci` dalam tab `Nama_Bilik`.
 
-Guru: sentuh telefon pada tag. Kali pertama pilih nama, selepas itu terus direkod. Imbasan seterusnya bertukar automatik Ambil / Pulang.
+**Hanya guru berdaftar boleh merekod.** Guru sentuh telefon pada tag. Kali pertama di telefon itu, guru log masuk dengan nama pengguna dan kata laluan akaun dashboard (sesi diingat 90 hari); selepas itu setiap tap terus direkod. Imbasan seterusnya bertukar automatik Ambil / Pulang.
+
+Guru yang belum mendaftar akan nampak borang log masuk dan pautan **Daftar akaun** ke dashboard; tiada rekod dibuat. Nama yang direkod diambil daripada akaun, jadi guru tidak boleh merekod atas nama orang lain. Akaun yang disekat (Status bukan `Aktif`) juga ditolak semasa imbas.
 
 ## Langkah D: Host Dashboard PWA
 
@@ -65,7 +67,7 @@ Dashboard kini memerlukan log masuk. Data kunci tidak lagi boleh dibaca tanpa to
 
 1. Buka dashboard > tab **Daftar** > isi Nama Penuh, Nama Pengguna, Kata Laluan (min. 8 aksara).
 2. Akaun terus **Aktif** dan pengguna terus masuk ke dashboard. Tiada kelulusan admin diperlukan.
-   **Nama Penuh** guru juga ditambah secara automatik ke tab `Nama_Guru`, jadi nama itu terus boleh dipilih semasa tap tag NFC.
+   **Nama Penuh** guru juga ditambah ke tab `Nama_Guru` sebagai rujukan admin. Nama inilah yang direkod setiap kali guru tap tag NFC.
 3. Seterusnya guna **Log Masuk**. Dengan **Ingat saya** (ditanda secara lalai), sesi kekal 90 hari dan nama pengguna diisi automatik. Tanpanya, sesi sah 7 hari.
    Kata laluan tidak disimpan oleh app. Pilih **Simpan kata laluan** apabila pelayar (Chrome/Safari) menawarkannya.
 4. Untuk menyekat akaun: buka tab **`Pengguna`** > tukar kolum **Status** kepada apa-apa selain `Aktif` (cth `Digantung`). Sesi sedia ada terus ditolak.
@@ -89,7 +91,8 @@ Ujian bertanda TODO ialah cadangan penambahbaikan yang belum dilaksanakan.
 ## Nota
 
 - Telefon guru mesti menyokong NFC dan membuka pautan dalam pelayar (Chrome/Safari). Jika guru log masuk akaun Google lain dalam pelayar, Web App "Anyone" tetap boleh dibuka tanpa log masuk.
-- `localStorage` terikat pada pelayar. Jika guru bertukar pelayar atau kosongkan data pelayar, mereka perlu pilih nama sekali lagi.
-- Pautan **Tukar Pengguna** hanya menukar nama untuk imbasan akan datang, dan tidak mencipta rekod baharu.
+- Sesi log masuk halaman imbas disimpan dalam pelayar telefon. Jika guru bertukar pelayar atau kosongkan data pelayar, mereka perlu log masuk sekali lagi.
+- Pautan **Bukan anda? Log keluar** pada halaman imbas membuang sesi di telefon itu, dan tidak mencipta rekod baharu.
+- Untuk menguji dari editor Apps Script, jalankan `ujiImbas` (perlu sekurang-kurangnya satu akaun Aktif).
 - Kad kunci menunjukkan label **lewat** (teks kuning) jika belum dipulangkan lebih 4 jam.
 - Jika ada ralat selepas deploy semula, pastikan versi Web App dikemas kini (Langkah B ayat 4).

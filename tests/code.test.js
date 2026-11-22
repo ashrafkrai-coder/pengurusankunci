@@ -137,10 +137,19 @@ describe('imbasPage_', () => {
     assert.match(html, /\\u003c\/script\\u003e/);
   });
 
-  test('senarai guru disusun mengikut abjad', () => {
-    const g = loadGas({ bilik: BILIK, guru: ['Zaki', 'Ali', 'Mona'], log: [] });
-    const html = g.ctx.imbasPage_('MAKMAL-1').getContent();
-    assert.match(html, /"guru":\["Ali","Mona","Zaki"\]/);
+  test('senarai nama guru TIDAK lagi didedahkan; pautan daftar disertakan', () => {
+    const html = gas().ctx.imbasPage_('MAKMAL-1').getContent();
+    assert.doesNotMatch(html, /"guru":/);
+    assert.doesNotMatch(html, /Cikgu Ali/);
+    assert.match(html, /"daftar":"https:\/\/mykey-eta\.vercel\.app\/"/);
+  });
+
+  test('corak $& dalam nama bilik tidak merosakkan halaman', () => {
+    const g = loadGas({ bilik: [['A', "Bilik $& $' A"]], guru: [], log: [] });
+    const html = g.ctx.imbasPage_('A').getContent();
+    assert.match(html, /"bilik":"Bilik \$\\u0026 \$' A"/);
+    const js = html.split('<script>')[1].split('</script>')[0];
+    assert.doesNotThrow(() => new Function(js), 'skrip halaman imbas sah');
   });
 });
 
@@ -149,52 +158,62 @@ function undur(g, saat = 120) {
   g.sheet('Log_Imbas').data.slice(1).forEach((r) => { r[0] = g.D(r[0].getTime() - saat * 1000); });
 }
 
-describe('prosesImbas', () => {
-  test('imbasan pertama = Ambil, kedua = Pulang, ketiga = Ambil', () => {
+// Daftar akaun (terus Aktif) dan pulangkan token sesi
+function akaun(g, username, nama) {
+  const body = { action: 'daftar', username, nama, password: 'rahsia123' };
+  return JSON.parse(g.ctx.doPost({ postData: { contents: JSON.stringify(body) } }).getContent()).token;
+}
+
+describe('prosesImbas: hanya guru berdaftar', () => {
+  test('tanpa token: DISEKAT (AUTH), tiada rekod, tiada lock', () => {
     const g = gas();
-    assert.equal(g.ctx.prosesImbas('MAKMAL-1', 'Cikgu Ali').tindakan, 'Ambil');
-    undur(g);
-    assert.equal(g.ctx.prosesImbas('makmal-1', 'Cikgu Ali').tindakan, 'Pulang');
-    assert.equal(g.ctx.prosesImbas('MAKMAL-1', 'Cikgu Bala').tindakan, 'Ambil');
-    const log = g.sheet('Log_Imbas').data;
-    assert.equal(log.length, 4);
-    assert.equal(log[1][1], 'MAKMAL-1', 'ID asal disimpan');
+    assert.throws(() => g.ctx.prosesImbas('MAKMAL-1', ''), /^Error: AUTH: Hanya guru berdaftar/);
+    assert.equal(g.sheet('Log_Imbas').data.length, 1, 'tiada rekod ditulis');
+    assert.deepEqual(g.calls.lock, []);
   });
 
-  test('setiap kunci ditogol secara berasingan', () => {
+  test('token palsu / nama dihantar sebagai token: DISEKAT', () => {
     const g = gas();
-    g.ctx.prosesImbas('MAKMAL-1', 'Cikgu Ali');
-    assert.equal(g.ctx.prosesImbas('BILIK-SENI', 'Cikgu Ali').tindakan, 'Ambil');
+    assert.throws(() => g.ctx.prosesImbas('MAKMAL-1', 'Cikgu Ali'), /AUTH:/);
+    assert.throws(() => g.ctx.prosesImbas('MAKMAL-1', 'abc123'), /AUTH:/);
+    assert.equal(g.sheet('Log_Imbas').data.length, 1);
   });
 
-  test('pulangan mengandungi bilik, guru dan masa berformat', () => {
-    const r = gas().ctx.prosesImbas('MAKMAL-1', '  Cikgu Ali ');
-    assert.equal(r.ok, true);
-    assert.equal(r.bilik, 'Makmal Komputer 1');
-    assert.equal(r.guru, 'Cikgu Ali');
-    assert.match(r.masa, /^\d{2}\/\d{2}\/\d{4} \d{1,2}:\d{2} (pagi|T\/hari|petang|malam)$/, 'format 12 jam');
-  });
-
-  test('masa12_: 12 jam dengan waktu pagi / T/hari / petang / malam (zon +08:00)', () => {
+  test('guru berdaftar: direkod dengan nama AKAUN', () => {
     const g = gas();
-    const m = (iso) => g.ctx.masa12_(g.D(iso));
-    assert.equal(m('2026-11-20T16:30:00Z'), '21/11/2026 12:30 pagi');        // 00:30 MYT
-    assert.equal(m('2026-11-21T00:05:00Z'), '21/11/2026 8:05 pagi');         // 08:05
-    assert.equal(m('2026-11-21T03:59:00Z'), '21/11/2026 11:59 pagi');        // 11:59
-    assert.equal(m('2026-11-21T04:00:00Z'), '21/11/2026 12:00 T/hari'); // 12:00
-    assert.equal(m('2026-11-21T05:59:00Z'), '21/11/2026 1:59 T/hari');  // 13:59
-    assert.equal(m('2026-11-21T06:00:00Z'), '21/11/2026 2:00 petang');       // 14:00
-    assert.equal(m('2026-11-21T10:59:00Z'), '21/11/2026 6:59 petang');       // 18:59
-    assert.equal(m('2026-11-21T11:00:00Z'), '21/11/2026 7:00 malam');        // 19:00
-    assert.equal(m('2026-11-21T13:45:00Z'), '21/11/2026 9:45 malam');        // 21:45
+    const t = akaun(g, 'ali', 'Cikgu Ali Berdaftar');
+    const r = g.ctx.prosesImbas('MAKMAL-1', t);
+    assert.equal(r.tindakan, 'Ambil');
+    assert.equal(r.guru, 'Cikgu Ali Berdaftar');
+    assert.equal(g.sheet('Log_Imbas').data[1][2], 'Cikgu Ali Berdaftar');
   });
 
-  test('format masa Google Sheets ialah 12 jam (AM/PM)', () => {
-    assert.match(gas().get('FMT_SHEET'), /h:mm:ss AM\/PM/);
+  test('akaun disekat (Digantung): DISEKAT walaupun token pernah sah', () => {
+    const g = gas();
+    const t = akaun(g, 'ali', 'Cikgu Ali');
+    g.sheet('Pengguna').data[1][5] = 'Digantung';
+    assert.throws(() => g.ctx.prosesImbas('MAKMAL-1', t), /AUTH:/);
+    assert.equal(g.sheet('Log_Imbas').data.length, 1);
   });
 
-  test('kunci tidak wujud: ralat', () => {
-    assert.throws(() => gas().ctx.prosesImbas('X', 'Cikgu Ali'), /tiada dalam tab Nama_Bilik/);
+  test('selepas log keluar: token tidak lagi sah', () => {
+    const g = gas();
+    const t = akaun(g, 'ali', 'Cikgu Ali');
+    g.ctx.logoutImbas(t);
+    assert.throws(() => g.ctx.prosesImbas('MAKMAL-1', t), /AUTH:/);
+  });
+
+  test('loginImbas: sesi 90 hari; kata laluan salah & akaun disekat ditolak', () => {
+    const g = gas();
+    akaun(g, 'ali', 'Cikgu Ali');
+    const r = g.call('loginImbas', 'ALI', 'rahsia123');
+    assert.deepEqual(r.pengguna, { username: 'ali', nama: 'Cikgu Ali' });
+    const hari = (JSON.parse(g.props['sesi_' + r.token]).exp - Date.now()) / 864e5;
+    assert.ok(Math.abs(hari - 90) < 0.01);
+    assert.equal(g.ctx.prosesImbas('MAKMAL-1', r.token).guru, 'Cikgu Ali');
+    assert.throws(() => g.ctx.loginImbas('ali', 'salah1234'), /salah/);
+    g.sheet('Pengguna').data[1][5] = 'Digantung';
+    assert.throws(() => g.ctx.loginImbas('ali', 'rahsia123'), /disekat/);
   });
 
   test('dijalankan dari editor tanpa argumen: mesej jelas, tiada lock diambil', () => {
@@ -203,12 +222,9 @@ describe('prosesImbas', () => {
     assert.deepEqual(g.calls.lock, []);
   });
 
-  test('ID kunci kosong: mesej jelas', () => {
-    assert.throws(() => gas().ctx.prosesImbas('', 'Cikgu Ali'), /ID kunci kosong/);
-  });
-
-  test('ujiImbas: rekod bilik & guru pertama, papar URL tag', () => {
+  test('ujiImbas: rekod bilik pertama oleh akaun Aktif pertama, papar URL tag', () => {
     const g = gas();
+    akaun(g, 'ali', 'Cikgu Ali');
     const logs = [];
     g.ctx.console = { log: (m) => logs.push(m) };
     g.ctx.ScriptApp = { getService: () => ({ getUrl: () => 'https://script.google.com/macros/s/X/exec' }) };
@@ -220,39 +236,71 @@ describe('prosesImbas', () => {
     assert.equal(logs.filter((l) => l.startsWith('URL tag NFC')).length, 3);
   });
 
-  test('nama kosong: ralat', () => {
-    assert.throws(() => gas().ctx.prosesImbas('MAKMAL-1', '  '), /Nama guru kosong/);
+  test('ujiImbas tanpa akaun Aktif: mesej jelas', () => {
+    assert.throws(() => gas().ctx.ujiImbas(), /Tiada akaun Aktif/);
+  });
+});
+
+describe('rekodImbas_ (logik Ambil/Pulang)', () => {
+  test('imbasan pertama = Ambil, kedua = Pulang, ketiga = Ambil', () => {
+    const g = gas();
+    assert.equal(g.ctx.rekodImbas_('MAKMAL-1', 'Cikgu Ali').tindakan, 'Ambil');
+    undur(g);
+    assert.equal(g.ctx.rekodImbas_('makmal-1', 'Cikgu Ali').tindakan, 'Pulang');
+    assert.equal(g.ctx.rekodImbas_('MAKMAL-1', 'Cikgu Bala').tindakan, 'Ambil');
+    const log = g.sheet('Log_Imbas').data;
+    assert.equal(log.length, 4);
+    assert.equal(log[1][1], 'MAKMAL-1', 'ID asal disimpan');
+  });
+
+  test('setiap kunci ditogol secara berasingan', () => {
+    const g = gas();
+    g.ctx.rekodImbas_('MAKMAL-1', 'Cikgu Ali');
+    assert.equal(g.ctx.rekodImbas_('BILIK-SENI', 'Cikgu Ali').tindakan, 'Ambil');
+  });
+
+  test('pulangan mengandungi bilik, guru dan masa berformat', () => {
+    const r = gas().ctx.rekodImbas_('MAKMAL-1', '  Cikgu Ali ');
+    assert.equal(r.ok, true);
+    assert.equal(r.bilik, 'Makmal Komputer 1');
+    assert.equal(r.guru, 'Cikgu Ali');
+    assert.match(r.masa, /^\d{2}\/\d{2}\/\d{4} \d{1,2}:\d{2} (pagi|T\/hari|petang|malam)$/, 'format 12 jam');
+  });
+
+  test('masa12_: 12 jam dengan waktu pagi / T/hari / petang / malam (zon +08:00)', () => {
+    const g = gas();
+    const m = (iso) => g.ctx.masa12_(g.D(iso));
+    assert.equal(m('2026-11-20T16:30:00Z'), '21/11/2026 12:30 pagi');   // 00:30 MYT
+    assert.equal(m('2026-11-21T00:05:00Z'), '21/11/2026 8:05 pagi');    // 08:05
+    assert.equal(m('2026-11-21T03:59:00Z'), '21/11/2026 11:59 pagi');   // 11:59
+    assert.equal(m('2026-11-21T04:00:00Z'), '21/11/2026 12:00 T/hari'); // 12:00
+    assert.equal(m('2026-11-21T05:59:00Z'), '21/11/2026 1:59 T/hari');  // 13:59
+    assert.equal(m('2026-11-21T06:00:00Z'), '21/11/2026 2:00 petang');  // 14:00
+    assert.equal(m('2026-11-21T10:59:00Z'), '21/11/2026 6:59 petang');  // 18:59
+    assert.equal(m('2026-11-21T11:00:00Z'), '21/11/2026 7:00 malam');   // 19:00
+    assert.equal(m('2026-11-21T13:45:00Z'), '21/11/2026 9:45 malam');   // 21:45
+  });
+
+  test('format masa Google Sheets ialah 12 jam (AM/PM)', () => {
+    assert.match(gas().get('FMT_SHEET'), /h:mm:ss AM\/PM/);
+  });
+
+  test('kunci tidak wujud / ID kosong / nama kosong: ralat', () => {
+    assert.throws(() => gas().ctx.rekodImbas_('X', 'Cikgu Ali'), /tiada dalam tab Nama_Bilik/);
+    assert.throws(() => gas().ctx.rekodImbas_('', 'Cikgu Ali'), /ID kunci kosong/);
+    assert.throws(() => gas().ctx.rekodImbas_('MAKMAL-1', '  '), /Nama guru kosong/);
   });
 
   test('lock sentiasa dilepaskan walaupun ralat', () => {
     const g = gas();
-    assert.throws(() => g.ctx.prosesImbas('X', 'A'));
+    assert.throws(() => g.ctx.rekodImbas_('X', 'A'));
     assert.deepEqual(g.calls.lock, ['wait:20000', 'release']);
-  });
-
-  test('nama guru mesti wujud dalam Nama_Guru', () => {
-    const g = gas();
-    assert.throws(() => g.ctx.prosesImbas('MAKMAL-1', 'Orang Luar'), /tiada dalam senarai guru/);
-    assert.equal(g.sheet('Log_Imbas').data.length, 1, 'tiada rekod ditulis');
-  });
-
-  test('nama bermula "=" ditolak (formula injection)', () => {
-    const g = gas();
-    assert.throws(() => g.ctx.prosesImbas('MAKMAL-1', '=IMPORTXML("http://x","//a")'));
-    assert.equal(g.sheet('Log_Imbas').data.length, 1);
-  });
-
-  test('nama tidak sensitif huruf; ejaan rasmi dari Nama_Guru disimpan', () => {
-    const g = gas();
-    const r = g.ctx.prosesImbas('MAKMAL-1', 'cikgu ali');
-    assert.equal(r.guru, 'Cikgu Ali');
-    assert.equal(g.sheet('Log_Imbas').data[1][2], 'Cikgu Ali');
   });
 
   test('imbasan berganda oleh guru sama < 60 saat diabaikan', () => {
     const g = gas();
-    const r1 = g.ctx.prosesImbas('MAKMAL-1', 'Cikgu Ali');
-    const r2 = g.ctx.prosesImbas('MAKMAL-1', 'Cikgu Ali');
+    const r1 = g.ctx.rekodImbas_('MAKMAL-1', 'Cikgu Ali');
+    const r2 = g.ctx.rekodImbas_('MAKMAL-1', 'Cikgu Ali');
     assert.equal(g.sheet('Log_Imbas').data.length, 2, 'hanya satu rekod');
     assert.equal(r2.ulang, true);
     assert.equal(r2.tindakan, 'Ambil', 'pulangkan rekod sedia ada');
@@ -262,22 +310,108 @@ describe('prosesImbas', () => {
 
   test('guru lain dalam tempoh 60 saat tetap direkod', () => {
     const g = gas();
-    g.ctx.prosesImbas('MAKMAL-1', 'Cikgu Ali');
-    assert.equal(g.ctx.prosesImbas('MAKMAL-1', 'Cikgu Bala').tindakan, 'Pulang');
+    g.ctx.rekodImbas_('MAKMAL-1', 'Cikgu Ali');
+    assert.equal(g.ctx.rekodImbas_('MAKMAL-1', 'Cikgu Bala').tindakan, 'Pulang');
     assert.equal(g.sheet('Log_Imbas').data.length, 3);
   });
 
   test('guru sama selepas 60 saat: direkod seperti biasa', () => {
     const g = gas();
-    g.ctx.prosesImbas('MAKMAL-1', 'Cikgu Ali');
+    g.ctx.rekodImbas_('MAKMAL-1', 'Cikgu Ali');
     undur(g, 61);
-    assert.equal(g.ctx.prosesImbas('MAKMAL-1', 'Cikgu Ali').tindakan, 'Pulang');
+    assert.equal(g.ctx.rekodImbas_('MAKMAL-1', 'Cikgu Ali').tindakan, 'Pulang');
+  });
+});
+
+describe('Halaman imbas (pelayar guru, jsdom)', () => {
+  const { JSDOM } = require('jsdom');
+  // Muat halaman imbas dengan google.script.run palsu
+  function halaman(server, ls = {}) {
+    const g = gas();
+    const html = g.ctx.imbasPage_('MAKMAL-1').getContent();
+    const panggilan = [];
+    const dom = new JSDOM(html, {
+      url: 'https://n-abc.googleusercontent.com/', runScripts: 'dangerously',
+      beforeParse(w) {
+        Object.entries(ls).forEach(([k, v]) => w.localStorage.setItem(k, v));
+        const run = () => {
+          let ok = () => {}, gagal = () => {};
+          const r = {
+            withSuccessHandler(f) { ok = f; return r; },
+            withFailureHandler(f) { gagal = f; return r; }
+          };
+          ['loginImbas', 'prosesImbas', 'logoutImbas'].forEach((fn) => {
+            r[fn] = (...args) => {
+              panggilan.push([fn, ...args]);
+              try { ok(server[fn](...args)); } catch (e) { gagal(e); }
+            };
+          });
+          return r;
+        };
+        w.google = { script: { get run() { return run(); } } };
+      }
+    });
+    const $ = (id) => dom.window.document.getElementById(id);
+    return { w: dom.window, $, panggilan, teks: () => $('app').textContent };
+  }
+  const BERJAYA = { ok: true, bilik: 'Makmal Komputer 1', tindakan: 'Ambil', guru: 'Cikgu Ali', masa: '22/11/2026 8:05 pagi' };
+
+  test('belum log masuk: papar borang log masuk + pautan daftar, TIADA rekod dibuat', () => {
+    const h = halaman({ prosesImbas: () => BERJAYA });
+    assert.match(h.teks(), /Hanya guru berdaftar boleh merekod kunci/);
+    assert.ok(h.$('u') && h.$('p'), 'medan nama pengguna & kata laluan');
+    assert.equal(h.$('daftar').getAttribute('href'), 'https://mykey-eta.vercel.app/');
+    assert.deepEqual(h.panggilan, []);
   });
 
-  test('halaman imbas memaparkan makluman imbasan berganda', () => {
-    const html = gas().ctx.imbasPage_('MAKMAL-1').getContent();
-    assert.match(html, /r\.ulang\?/);
-    assert.match(html, /Imbasan berganda diabaikan/);
+  test('log masuk berjaya: token disimpan dan imbasan terus direkod', () => {
+    const h = halaman({
+      loginImbas: () => ({ ok: true, token: 'tok1', pengguna: { username: 'ali', nama: 'Cikgu Ali' } }),
+      prosesImbas: () => BERJAYA
+    });
+    h.$('u').value = 'ali'; h.$('p').value = 'rahsia123';
+    h.$('f').dispatchEvent(new h.w.Event('submit', { cancelable: true }));
+    assert.deepEqual(h.panggilan, [['loginImbas', 'ali', 'rahsia123'], ['prosesImbas', 'MAKMAL-1', 'tok1']]);
+    assert.equal(h.w.localStorage.getItem('nfc_kunci_token'), 'tok1');
+    assert.match(h.teks(), /BERJAYA \(AMBIL\)/);
+    assert.match(h.teks(), /Cikgu Ali/);
+  });
+
+  test('log masuk gagal: mesej ralat dalam borang', () => {
+    const h = halaman({ loginImbas: () => { throw new Error('Nama pengguna atau kata laluan salah.'); } });
+    h.$('u').value = 'ali'; h.$('p').value = 'x';
+    h.$('f').dispatchEvent(new h.w.Event('submit', { cancelable: true }));
+    assert.match(h.$('msg').textContent, /salah/);
+    assert.equal(h.w.localStorage.getItem('nfc_kunci_token'), null);
+  });
+
+  test('sudah log masuk: tap terus direkod tanpa borang', () => {
+    const h = halaman({ prosesImbas: () => BERJAYA }, { nfc_kunci_token: 'tokLama' });
+    assert.deepEqual(h.panggilan, [['prosesImbas', 'MAKMAL-1', 'tokLama']]);
+    assert.match(h.teks(), /BERJAYA/);
+  });
+
+  test('sesi tidak sah / akaun disekat: token dibuang, borang log masuk dipapar', () => {
+    const h = halaman({ prosesImbas: () => { throw new Error('AUTH: Hanya guru berdaftar boleh merekod kunci. Sila log masuk.'); } },
+      { nfc_kunci_token: 'tokLama' });
+    assert.equal(h.w.localStorage.getItem('nfc_kunci_token'), null);
+    assert.ok(h.$('f'), 'borang log masuk');
+    assert.equal(h.$('msg').textContent, 'Hanya guru berdaftar boleh merekod kunci. Sila log masuk.');
+  });
+
+  test('Log keluar: token dibuang & logoutImbas dipanggil', () => {
+    const h = halaman({ prosesImbas: () => BERJAYA, logoutImbas: () => ({ ok: true }) }, { nfc_kunci_token: 'tokLama' });
+    h.w.keluar();
+    assert.deepEqual(h.panggilan.at(-1), ['logoutImbas', 'tokLama']);
+    assert.equal(h.w.localStorage.getItem('nfc_kunci_token'), null);
+    assert.ok(h.$('f'));
+  });
+
+  test('nama pilihan versi lama (nfc_kunci_guru) tidak lagi membenarkan rekod', () => {
+    const h = halaman({ prosesImbas: () => BERJAYA }, { nfc_kunci_guru: 'Cikgu Ali' });
+    assert.deepEqual(h.panggilan, []);
+    assert.equal(h.w.localStorage.getItem('nfc_kunci_guru'), null);
+    assert.ok(h.$('f'));
   });
 });
 
@@ -351,12 +485,18 @@ describe('Pengguna: daftar & login', () => {
     assert.equal(post(g, { action: 'login', username: 'ali.admin', password: 'rahsia123' }).ok, true);
   });
 
-  test('daftar: nama guru auto ditambah ke Nama_Guru & boleh terus imbas NFC', () => {
+  test('daftar: nama guru auto ditambah ke Nama_Guru & boleh terus imbas NFC selepas log masuk', () => {
     const g = loadGas({ bilik: BILIK, guru: [], log: [] });
     post(g, { action: 'daftar', username: 'ali', nama: 'Cikgu Ali Baru', password: 'rahsia123' });
     assert.deepEqual([...g.sheet('Nama_Guru').data[1]], ['Cikgu Ali Baru', '']);
-    assert.match(g.ctx.imbasPage_('MAKMAL-1').getContent(), /"guru":\["Cikgu Ali Baru"\]/);
-    assert.equal(g.ctx.prosesImbas('MAKMAL-1', 'Cikgu Ali Baru').tindakan, 'Ambil');
+    const { token } = g.call('loginImbas', 'ali', 'rahsia123');
+    assert.equal(g.ctx.prosesImbas('MAKMAL-1', token).guru, 'Cikgu Ali Baru');
+  });
+
+  test('nama dalam Nama_Guru TANPA akaun tidak boleh imbas', () => {
+    const g = loadGas({ bilik: BILIK, guru: ['Cikgu Tanpa Akaun'], log: [] });
+    assert.throws(() => g.ctx.prosesImbas('MAKMAL-1', 'Cikgu Tanpa Akaun'), /AUTH:/);
+    assert.equal(g.sheet('Log_Imbas').data.length, 1);
   });
 
   test('daftar: tab Nama_Guru dicipta jika tiada; tiada pendua (tidak sensitif huruf)', () => {

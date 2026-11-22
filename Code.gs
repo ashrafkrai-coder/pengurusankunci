@@ -17,6 +17,7 @@ const HASH_ITER = 500;   // bilangan ulangan hash kata laluan
 const MAX_GAGAL = 5;     // cubaan log masuk gagal sebelum dikunci 15 minit
 const DEBOUNCE_SAAT = 60; // imbasan semula oleh guru sama dalam tempoh ini diabaikan
 const FMT_SHEET = 'dd/mm/yyyy h:mm:ss AM/PM'; // format masa 12 jam dalam Google Sheets
+const DASHBOARD_URL = 'https://mykey-eta.vercel.app/'; // pautan "Daftar akaun" di halaman imbas
 
 /* ============================================================
  *  SETUP — selamat dijalankan semula: data sedia ada TIDAK dipadam.
@@ -243,11 +244,12 @@ function imbasPage_(kunci) {
     kunci: kunci.trim(),
     bilik: b ? b.nama : '',
     valid: !!b,
-    guru: guruList_()
+    daftar: DASHBOARD_URL
   };
   // Escape supaya selamat dalam <script>
   const safe = JSON.stringify(data).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026');
-  return HtmlService.createHtmlOutput(HTML_IMBAS.replace('__DATA__', safe))
+  // Fungsi penggantian: elak corak "$&" / "$'" dalam data ditafsir oleh replace()
+  return HtmlService.createHtmlOutput(HTML_IMBAS.replace('__DATA__', function () { return safe; }))
     .setTitle('Imbas Kunci')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
@@ -255,16 +257,16 @@ function imbasPage_(kunci) {
 
 /**
  * UJIAN DARI EDITOR: pilih fungsi ini > Run. Lihat hasil di Execution log.
- * Merekod imbasan SEBENAR (bilik pertama, guru pertama) dalam Log_Imbas,
+ * Merekod imbasan SEBENAR (bilik pertama, akaun Aktif pertama) dalam Log_Imbas,
  * dan memaparkan URL tag NFC bagi setiap kunci.
  */
 function ujiImbas() {
   const bm = bilikMap_();
-  const guru = guruList_();
+  const akaun = users_().filter(function (u) { return u.status === 'Aktif'; })[0];
   if (!bm.order.length) throw new Error('Tab Nama_Bilik kosong. Jalankan setupSheets() atau isi data bilik dahulu.');
-  if (!guru.length) throw new Error('Tab Nama_Guru kosong. Isi nama guru dahulu.');
+  if (!akaun) throw new Error('Tiada akaun Aktif dalam tab Pengguna. Daftar akaun di dashboard dahulu.');
   const b = bm.map[bm.order[0]];
-  const r = prosesImbas(b.id, guru[0]);
+  const r = rekodImbas_(b.id, akaun.nama);
   console.log('Hasil ujian: ' + JSON.stringify(r));
   let url = '';
   try { url = ScriptApp.getService().getUrl() || ''; } catch (e) { url = ''; }
@@ -278,26 +280,45 @@ function ujiImbas() {
   return r;
 }
 
-/** Dipanggil dari pelayar guru melalui google.script.run (BUKAN untuk dijalankan terus dari editor). */
-function prosesImbas(kunci, namaGuru) {
-  if (kunci === undefined && namaGuru === undefined) {
+/* ---------- Dipanggil dari halaman imbas melalui google.script.run ---------- */
+
+/** Log masuk di halaman imbas (sesi 90 hari pada peranti itu). */
+function loginImbas(username, password) {
+  const r = login_({ username: username, password: password, ingat: true });
+  return { ok: true, token: r.token, pengguna: { username: r.pengguna.username, nama: r.pengguna.nama } };
+}
+
+function logoutImbas(token) {
+  return logout_({ token: token });
+}
+
+/**
+ * Rekod imbasan. HANYA guru berdaftar dengan sesi sah & akaun Aktif.
+ * Nama yang direkod diambil daripada akaun, bukan daripada pelayar.
+ * (BUKAN untuk dijalankan terus dari editor; guna ujiImbas.)
+ */
+function prosesImbas(kunci, token) {
+  if (kunci === undefined && token === undefined) {
     throw new Error('prosesImbas dipanggil tanpa ID kunci. Fungsi ini dipanggil oleh halaman imbas NFC, ' +
       'bukan dijalankan terus dari editor. Untuk menguji, pilih fungsi ujiImbas > Run.');
   }
+  const u = sesi_(token);
+  // Awalan "AUTH:" memberitahu halaman imbas supaya memaparkan borang log masuk
+  if (!u) throw new Error('AUTH: Hanya guru berdaftar boleh merekod kunci. Sila log masuk.');
+  return rekodImbas_(kunci, u.nama);
+}
+
+/** Logik rekod Ambil/Pulang (nama guru sudah disahkan oleh pemanggil). */
+function rekodImbas_(kunci, namaGuru) {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
     const id = String(kunci || '').trim().toUpperCase();
-    const nama = String(namaGuru || '').trim();
+    const guru = String(namaGuru || '').trim();
     if (!id) throw new Error('ID kunci kosong. Semak URL tag NFC (mesti berakhir dengan ?kunci=ID_KUNCI).');
     const b = bilikMap_().map[id];
     if (!b) throw new Error('ID kunci "' + kunci + '" tiada dalam tab Nama_Bilik.');
-    if (!nama) throw new Error('Nama guru kosong.');
-
-    // Nama mesti wujud dalam tab Nama_Guru. Ini juga menghalang input
-    // seperti "=FORMULA()" daripada ditulis ke dalam Sheet.
-    const guru = guruList_().filter(function (g) { return g.toLowerCase() === nama.toLowerCase(); })[0];
-    if (!guru) throw new Error('Nama "' + nama + '" tiada dalam senarai guru. Sila pilih semula nama anda.');
+    if (!guru) throw new Error('Nama guru kosong.');
 
     // Cari rekod terakhir kunci ini
     const rows = logRows_();
@@ -534,36 +555,88 @@ function dashboardAuth_(token) {
 /* ============================================================
  *  HTML halaman imbas (telefon guru)
  * ============================================================ */
-const HTML_IMBAS = '<!DOCTYPE html><html lang="ms"><head><base target="_top"><meta charset="utf-8">' +
-'<style>' +
-'*{box-sizing:border-box}body{margin:0;font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0f172a;color:#fff;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}' +
-'.card{background:#fff;color:#0f172a;border-radius:20px;padding:28px 22px;width:100%;max-width:400px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,.4);overflow-wrap:anywhere}' +
-'.ico{width:84px;height:84px;border-radius:50%;margin:0 auto 14px;display:flex;align-items:center;justify-content:center;font-size:46px;color:#fff}' +
-'.ok-ambil{background:#ea580c}.ok-pulang{background:#16a34a}.err{background:#dc2626}.wait{background:#64748b}' +
-'h1{font-size:15px;margin:0 0 4px;color:#64748b;font-weight:600;letter-spacing:.5px;text-transform:uppercase}' +
-'h2{font-size:24px;margin:0 0 14px}' +
-'.badge{display:inline-block;padding:10px 18px;border-radius:999px;font-weight:800;font-size:17px;color:#fff;margin-bottom:14px}' +
-'.meta{font-size:14px;color:#475569;line-height:1.6}' +
-'select,button{width:100%;padding:14px;border-radius:12px;font-size:16px;margin-top:12px;border:1px solid #cbd5e1}' +
-'button{background:#1e40af;color:#fff;border:0;font-weight:700;cursor:pointer}button:disabled{opacity:.5}' +
-'a.tukar{display:inline-block;margin-top:18px;font-size:13px;color:#64748b;text-decoration:underline;cursor:pointer}' +
-'.spin{width:40px;height:40px;border:5px solid #e2e8f0;border-top-color:#1e40af;border-radius:50%;animation:s 1s linear infinite;margin:10px auto}@keyframes s{to{transform:rotate(360deg)}}' +
-'</style></head><body><div class="card" id="app"><div class="spin"></div></div>' +
-'<script>' +
-'var D=__DATA__;var KEY="nfc_kunci_guru";var app=document.getElementById("app");var modTukar=false;' +
-'function esc(s){var d=document.createElement("div");d.textContent=s==null?"":s;return d.innerHTML;}' +
-'function getNama(){try{return localStorage.getItem(KEY)||"";}catch(e){return "";}}' +
-'function setNama(n){try{localStorage.setItem(KEY,n);}catch(e){}}' +
-'function clrNama(){try{localStorage.removeItem(KEY);}catch(e){}}' +
-'function loading(t){app.innerHTML=\'<div class="spin"></div><div class="meta">\'+esc(t||"Memproses...")+\'</div>\';}' +
-'function ralat(m){app.innerHTML=\'<div class="ico err">!</div><h1>Ralat</h1><h2>\'+esc(m)+\'</h2><a class="tukar" onclick="mula()">Cuba lagi</a>\';}' +
-'function borang(){var o=\'<option value="">-- Pilih nama anda --</option>\';D.guru.forEach(function(g){o+=\'<option>\'+esc(g)+\'</option>\';});' +
-' var tajuk=modTukar?"Tukar Pengguna":"Pendaftaran Peranti";var info=modTukar?"Pilih nama baharu. Tiada rekod dibuat; imbas semula tag selepas ini.":"Pilih nama anda sekali sahaja. Peranti ini akan mengingatinya.";var btn=modTukar?"Simpan Nama":"Simpan & Rekod";' +
-' app.innerHTML=\'<div class="ico wait">&#128100;</div><h1>\'+tajuk+\'</h1><h2>\'+esc(D.bilik)+\'</h2><div class="meta">\'+info+\'</div><select id="sel">\'+o+\'</select><button id="btn">\'+btn+\'</button>\';' +
-' document.getElementById("btn").onclick=function(){var n=document.getElementById("sel").value;if(!n){alert("Sila pilih nama anda.");return;}setNama(n);if(modTukar){modTukar=false;app.innerHTML=\'<div class="ico ok-pulang">&#10003;</div><h1>Disimpan</h1><h2>\'+esc(n)+\'</h2><div class="meta">Sila imbas semula tag NFC pada kunci.</div>\';}else{hantar(n);}};}' +
-'function hantar(n){loading("Merekod...");google.script.run.withSuccessHandler(papar).withFailureHandler(function(e){ralat(e.message||e);}).prosesImbas(D.kunci,n);}' +
-'function papar(r){var a=r.tindakan==="Ambil";app.innerHTML=\'<div class="ico \'+(a?"ok-ambil":"ok-pulang")+\'">\'+(a?"&#128273;":"&#10003;")+\'</div><h1>\'+esc(r.bilik)+\'</h1><div class="badge \'+(a?"ok-ambil":"ok-pulang")+\'">BERJAYA (\'+r.tindakan.toUpperCase()+\')</div><div class="meta"><b>\'+esc(r.guru)+\'</b><br>\'+esc(r.masa)+(r.ulang?\'<br><i>Imbasan berganda diabaikan. Rekod ini sudah dibuat sebentar tadi.</i>\':\'\')+\'</div><a class="tukar" onclick="tukar()">Bukan anda? Tukar Pengguna</a>\';}' +
-'function tukar(){clrNama();modTukar=true;borang();}' +
-'function mula(){if(!D.valid){ralat("Kunci \\""+D.kunci+"\\" tidak dijumpai dalam senarai bilik.");return;}if(!D.guru.length){ralat("Senarai guru kosong (tab Nama_Guru).");return;}var n=getNama();if(n&&D.guru.indexOf(n)>-1){hantar(n);}else{clrNama();borang();}}' +
-'mula();' +
-'</script></body></html>';
+const HTML_IMBAS = `<!DOCTYPE html><html lang="ms"><head><base target="_top"><meta charset="utf-8">
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0f172a;color:#fff;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.card{background:#fff;color:#0f172a;border-radius:20px;padding:28px 22px;width:100%;max-width:400px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,.4);overflow-wrap:anywhere}
+.ico{width:84px;height:84px;border-radius:50%;margin:0 auto 14px;display:flex;align-items:center;justify-content:center;font-size:42px;color:#fff}
+.ok-ambil{background:#ea580c}.ok-pulang{background:#16a34a}.err{background:#dc2626}.wait{background:#1e40af}
+h1{font-size:15px;margin:0 0 4px;color:#64748b;font-weight:600;letter-spacing:.5px;text-transform:uppercase}
+h2{font-size:22px;margin:0 0 14px}
+.badge{display:inline-block;padding:10px 18px;border-radius:999px;font-weight:800;font-size:17px;color:#fff;margin-bottom:14px}
+.meta{font-size:14px;color:#475569;line-height:1.6}
+.msg{margin-top:12px;padding:10px 12px;border-radius:12px;background:#fee2e2;color:#991b1b;font-size:14px;text-align:left}
+input,button{width:100%;padding:14px;border-radius:12px;font-size:16px;margin-top:12px;border:1px solid #cbd5e1;font-family:inherit}
+input{background:#f1f5f9;color:#0f172a;outline:none}input:focus{border-color:#1e40af;background:#fff}
+button{background:#1e40af;color:#fff;border:0;font-weight:700;cursor:pointer}button:disabled{opacity:.5}
+a.tukar{display:inline-block;margin-top:18px;font-size:14px;color:#1e40af;text-decoration:underline;cursor:pointer}
+.spin{width:40px;height:40px;border:5px solid #e2e8f0;border-top-color:#1e40af;border-radius:50%;animation:s 1s linear infinite;margin:10px auto}
+@keyframes s{to{transform:rotate(360deg)}}
+</style></head><body><div class="card" id="app"><div class="spin"></div></div>
+<script>
+var D = __DATA__;
+var KEY_T = "nfc_kunci_token", KEY_N = "nfc_kunci_nama";
+var app = document.getElementById("app");
+function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+function lsGet(k){ try { return localStorage.getItem(k) || ""; } catch(e){ return ""; } }
+function lsSet(k, v){ try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch(e){} }
+function loading(t){ app.innerHTML = '<div class="spin"></div><div class="meta">' + esc(t || "Memproses...") + '</div>'; }
+function ralat(m){ app.innerHTML = '<div class="ico err">!</div><h1>Ralat</h1><h2>' + esc(m) + '</h2><a class="tukar" onclick="mula()">Cuba lagi</a>'; }
+
+/* Guru belum log masuk: hanya guru berdaftar boleh merekod */
+function borangLogin(msg){
+  app.innerHTML = '<div class="ico wait">&#128274;</div><h1>Log masuk guru</h1><h2>' + esc(D.bilik) + '</h2>' +
+    '<div class="meta">Hanya guru berdaftar boleh merekod kunci. Log masuk sekali; telefon ini akan mengingati anda.</div>' +
+    (msg ? '<div class="msg" id="msg">' + esc(msg) + '</div>' : '') +
+    '<form id="f"><input id="u" placeholder="Nama pengguna" autocomplete="username" autocapitalize="none" spellcheck="false">' +
+    '<input id="p" type="password" placeholder="Kata laluan" autocomplete="current-password">' +
+    '<button id="btn" type="submit">Log Masuk &amp; Rekod</button></form>' +
+    '<a class="tukar" id="daftar" href="' + esc(D.daftar) + '" target="_blank" rel="noopener">Belum berdaftar? Daftar akaun di sini</a>';
+  document.getElementById("f").onsubmit = function(e){
+    e.preventDefault();
+    var u = document.getElementById("u").value.trim(), p = document.getElementById("p").value;
+    if (!u || !p) { borangLogin("Sila isi nama pengguna dan kata laluan."); return; }
+    loading("Log masuk...");
+    google.script.run
+      .withSuccessHandler(function(r){ lsSet(KEY_T, r.token); lsSet(KEY_N, (r.pengguna && r.pengguna.nama) || u); hantar(); })
+      .withFailureHandler(function(err){ borangLogin(err && err.message ? err.message : String(err)); })
+      .loginImbas(u, p);
+  };
+}
+
+function hantar(){
+  loading("Merekod...");
+  google.script.run
+    .withSuccessHandler(papar)
+    .withFailureHandler(function(err){
+      var m = err && err.message ? err.message : String(err);
+      if (m.indexOf("AUTH:") > -1) { lsSet(KEY_T, ""); borangLogin(m.split("AUTH:").pop().trim()); }
+      else ralat(m);
+    })
+    .prosesImbas(D.kunci, lsGet(KEY_T));
+}
+
+function papar(r){
+  var a = r.tindakan === "Ambil";
+  app.innerHTML = '<div class="ico ' + (a ? "ok-ambil" : "ok-pulang") + '">' + (a ? "&#128273;" : "&#10003;") + '</div>' +
+    '<h1>' + esc(r.bilik) + '</h1><div class="badge ' + (a ? "ok-ambil" : "ok-pulang") + '">BERJAYA (' + esc(r.tindakan).toUpperCase() + ')</div>' +
+    '<div class="meta"><b>' + esc(r.guru) + '</b><br>' + esc(r.masa) +
+    (r.ulang ? '<br><i>Imbasan berganda diabaikan. Rekod ini sudah dibuat sebentar tadi.</i>' : '') + '</div>' +
+    '<a class="tukar" onclick="keluar()">Bukan anda? Log keluar</a>';
+}
+
+function keluar(){
+  var t = lsGet(KEY_T);
+  lsSet(KEY_T, ""); lsSet(KEY_N, "");
+  if (t) google.script.run.logoutImbas(t);
+  borangLogin("");
+}
+
+function mula(){
+  if (!D.valid) { ralat('Kunci "' + D.kunci + '" tidak dijumpai dalam senarai bilik.'); return; }
+  try { localStorage.removeItem("nfc_kunci_guru"); } catch(e){} // nama pilihan versi lama: tidak lagi digunakan
+  if (lsGet(KEY_T)) hantar(); else borangLogin("");
+}
+mula();
+</script></body></html>`;
