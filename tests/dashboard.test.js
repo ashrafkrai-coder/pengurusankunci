@@ -72,7 +72,7 @@ describe('Log masuk', () => {
     assert.equal(p.hidden('authScreen'), true);
     assert.equal(p.$('aPass').value, '', 'kata laluan dikosongkan');
     assert.equal(p.$('sumJumlah').textContent, '3');
-    assert.match(p.$('salam').textContent, /Ali/);
+    assert.match(p.$('namaSalam').textContent, /Ali/);
   });
 
   test('Ingat saya: nama pengguna diingat & diisi semula; kata laluan TIDAK disimpan', async () => {
@@ -244,7 +244,11 @@ describe('Dashboard (sudah log masuk)', () => {
   test('salam, avatar inisial & helaian Akaun', async () => {
     p = loadPage({ ls: { kunci_token: 'tok', kunci_user: JSON.stringify({ username: 'ali', nama: 'Cikgu Ali bin Abu' }) }, api: () => DASH });
     await p.wait(120);
-    assert.match(p.$('salam').textContent, /^Selamat (pagi|tengah hari|petang|malam), Cikgu Ali$/, "nama tanpa bin ...");
+    assert.match(p.$('salam').textContent, /^Selamat (pagi|tengah hari|petang|malam),$/);
+    assert.equal(p.$('namaSalam').textContent, 'Cikgu Ali', 'nama tanpa bin ...');
+    assert.equal(p.$('namaSalam').title, 'Cikgu Ali bin Abu', 'nama penuh dalam title');
+    assert.match(p.$('namaSalam').className, /\bline-clamp-2\b/, 'nama panjang turun ke 2 baris, tidak terpotong satu baris');
+    assert.equal(p.w.document.querySelector('header #salam'), null, 'salam tidak lagi berkongsi bar atas dengan butang');
     assert.equal(p.$('btnAvatar').textContent, 'A', 'gelaran Cikgu & "bin" diabaikan');
     assert.equal(p.hidden('sheetAkaun'), true);
     p.$('navAkaun').click();

@@ -68,8 +68,8 @@
     <div class="max-w-3xl mx-auto px-4 h-16 flex items-center gap-3">
       <div class="w-10 h-10 rounded-2xl btn-on flex items-center justify-center flex-none"><i data-lucide="key-round" class="w-5 h-5"></i></div>
       <div class="min-w-0 flex-1">
-        <p id="salam" class="text-[12px] muted font-medium leading-tight truncate">Selamat datang</p>
         <h1 class="text-[16px] font-bold leading-tight truncate">Pengurusan Kunci</h1>
+        <p class="text-[12px] muted font-medium leading-tight truncate">SMK Taman Medan</p>
       </div>
       <button id="btnRefresh" class="press w-10 h-10 rounded-full card flex items-center justify-center" aria-label="Muat Semula"><i data-lucide="refresh-cw" class="w-[18px] h-[18px]"></i></button>
       <button id="btnAvatar" class="press w-10 h-10 rounded-full btn-on flex items-center justify-center text-[13px] font-bold" aria-label="Akaun">?</button>
@@ -77,6 +77,12 @@
   </header>
 
   <main class="max-w-3xl mx-auto px-4 space-y-4">
+
+    <!-- Salam: lebar penuh supaya nama panjang tidak terpotong -->
+    <div class="pt-1 min-w-0">
+      <p id="salam" class="text-[13px] muted font-medium leading-tight">Selamat datang</p>
+      <p id="namaSalam" class="text-[20px] font-bold leading-snug mt-0.5 line-clamp-2 break-words"></p>
+    </div>
 
     <div id="amaran" class="hidden fade text-[13px] px-4 py-3 rounded-2xl flex items-start gap-2" style="background:var(--bad-soft);color:var(--bad)"></div>
 
@@ -490,7 +496,9 @@
     var u = getUser();
     var nama = u && (u.nama || u.username);
     var pendek = nama ? String(nama).split(/\s+(?:bin|binti|bt|b\.|a\/l|a\/p)\s+/i)[0] : '';
-    $('salam').textContent = salam() + (pendek ? ', ' + pendek : '');
+    $('salam').textContent = salam() + (pendek ? ',' : '');
+    $('namaSalam').textContent = pendek;
+    $('namaSalam').title = nama || '';
     $('btnAvatar').textContent = inisial(nama);
     renderStatus();
     renderLog();
