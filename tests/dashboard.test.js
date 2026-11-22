@@ -30,6 +30,15 @@ describe('Tanpa log masuk', () => {
     assert.equal(p.$('btnAuth').textContent, 'Log Masuk');
   });
 
+  test('tagline dipaparkan di skrin log masuk & helaian Akaun', () => {
+    p = loadPage();
+    const t = [...p.w.document.querySelectorAll('.tagline')];
+    assert.equal(t.length, 2);
+    for (const el of t) assert.equal(el.textContent, 'Developed & managed by ustazashraf · v1.0');
+    assert.ok(p.$('authScreen').contains(t[0]) || p.$('authScreen').contains(t[1]));
+    assert.ok(p.$('sheetAkaun').contains(t[0]) || p.$('sheetAkaun').contains(t[1]));
+  });
+
   test('logo sekolah dirujuk pada skrin log masuk', () => {
     p = loadPage();
     const img = p.$('logoSekolah');
@@ -239,6 +248,19 @@ describe('Dashboard (sudah log masuk)', () => {
     assert.match(p.$('area').textContent, /Ambil 8:05 pagi.*Pulang 9:30 malam/);
     assert.match(p.$('area').textContent, /Ambil 12:15 T\/hari.*Pulang 3:40 petang/);
     assert.doesNotMatch(p.$('area').textContent + p.$('areaStatus').textContent, /\b(2[0-3]|1[3-9]):\d{2}\b/, 'tiada masa 24 jam');
+  });
+
+  test('helaian Akaun: avatar tidak mengecut, nama penuh tidak dipotong satu baris', async () => {
+    const panjang = 'MUHAMMAD ASHRAF B. KAMARULZAMAN KPM-Guru';
+    p = loadPage({ ls: { kunci_token: 'tok', kunci_user: JSON.stringify({ username: 'ustazashraf', nama: panjang }) }, api: () => DASH });
+    await p.wait(120);
+    p.$('navAkaun').click();
+    assert.equal(p.$('akNama').textContent, panjang, 'nama penuh dipaparkan');
+    assert.doesNotMatch(p.$('akNama').className, /\btruncate\b/);
+    assert.match(p.$('akNama').className, /\bbreak-words\b/);
+    assert.match(p.$('akAvatar').className, /\bflex-none\b/, 'avatar tidak mengecut');
+    assert.match(p.$('btnAvatar').className, /\bflex-none\b/);
+    assert.match(p.$('btnRefresh').className, /\bflex-none\b/);
   });
 
   test('salam, avatar inisial & helaian Akaun', async () => {
