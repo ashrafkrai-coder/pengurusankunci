@@ -18,6 +18,8 @@ const MAX_GAGAL = 5;     // cubaan log masuk gagal sebelum dikunci 15 minit
 const DEBOUNCE_SAAT = 60; // imbasan semula oleh guru sama dalam tempoh ini diabaikan
 const FMT_SHEET = 'dd/mm/yyyy h:mm:ss AM/PM'; // format masa 12 jam dalam Google Sheets
 const DASHBOARD_URL = 'https://mykey-eta.vercel.app/'; // pautan "Daftar akaun" di halaman imbas
+const CACHE_DASH_SAAT = 30; // data dashboard di-cache; dibuang serta-merta setiap kali ada imbasan baharu
+const MAX_LOG = 300;        // bilangan rekod sejarah terkini yang dihantar ke dashboard
 
 /* ============================================================
  *  SETUP — selamat dijalankan semula: data sedia ada TIDAK dipadam.
@@ -154,8 +156,13 @@ function json_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
 
+/**
+ * Tarikh ISO dalam zon Malaysia (+08:00, tiada DST).
+ * Dikira terus (bukan Utilities.formatDate) kerana dipanggil untuk setiap rekod log.
+ */
 function iso_(d) {
-  return (d instanceof Date && !isNaN(d)) ? Utilities.formatDate(d, TZ, "yyyy-MM-dd'T'HH:mm:ssXXX") : '';
+  if (!(d instanceof Date) || isNaN(d)) return '';
+  return new Date(d.getTime() + 8 * 3600 * 1000).toISOString().slice(0, 19) + '+08:00';
 }
 
 /** Masa untuk paparan, format 12 jam dengan waktu: "21/11/2026 8:05 pagi" */
@@ -345,6 +352,7 @@ function rekodImbas_(kunci, namaGuru) {
     const tindakan = (last && last.tindakan === 'Ambil') ? 'Pulang' : 'Ambil';
     const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SH_LOG);
     sh.appendRow([now, b.id, guru, tindakan]);
+    buangCacheDash_(); // dashboard terus nampak imbasan ini
     sh.getRange(sh.getLastRow(), 1).setNumberFormat(FMT_SHEET);
     SpreadsheetApp.flush();
 
@@ -407,7 +415,25 @@ function getDashboard_() {
     };
   });
 
-  return { ok: true, dijana: iso_(new Date()), bilik: bilik, log: sejarah };
+  // Status bilik dikira daripada seluruh log; hanya sejarah terkini dihantar (data lebih kecil)
+  return { ok: true, dijana: iso_(new Date()), bilik: bilik, log: sejarah.slice(0, MAX_LOG), jumlahLog: sejarah.length };
+}
+
+/** Data dashboard dengan cache pelayan. Dibuang oleh rekodImbas_ apabila ada imbasan baharu. */
+function dashboardCache_() {
+  const c = CacheService.getScriptCache();
+  const raw = c.get('dash');
+  if (raw) {
+    try { return JSON.parse(raw); } catch (e) { /* cache rosak: jana semula */ }
+  }
+  const d = getDashboard_();
+  const s = JSON.stringify(d);
+  if (s.length < 90000) c.put('dash', s, CACHE_DASH_SAAT); // had CacheService: 100 KB satu kunci
+  return d;
+}
+
+function buangCacheDash_() {
+  try { CacheService.getScriptCache().remove('dash'); } catch (e) { /* abaikan */ }
 }
 
 /* ============================================================
@@ -547,7 +573,7 @@ function buangSesiLuput_(props) {
 function dashboardAuth_(token) {
   const u = sesi_(token);
   if (!u) return { ok: false, auth: false, error: 'Sesi tamat atau tidak sah. Sila log masuk semula.' };
-  const d = getDashboard_();
+  const d = dashboardCache_();
   d.pengguna = { username: u.username, nama: u.nama };
   return d;
 }

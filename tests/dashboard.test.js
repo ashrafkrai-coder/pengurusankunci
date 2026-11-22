@@ -412,6 +412,22 @@ describe('Dashboard (sudah log masuk)', () => {
     assert.match(p.$('area').textContent, /Cikgu Bala/);
   });
 
+  test('nota "rekod terkini" apabila pelayan memotong sejarah', async () => {
+    const d = JSON.parse(JSON.stringify(DASH));
+    d.jumlahLog = 512;
+    p = loadPage({ ls: login, api: () => d });
+    await p.wait(120);
+    p.w.document.querySelector('[data-tab="log"]').click();
+    assert.match(p.$('notaLog').textContent, /Memaparkan 2 rekod terkini daripada 512/);
+  });
+
+  test('tiada nota apabila semua sejarah dihantar', async () => {
+    p = loadPage({ ls: login, api: () => DASH });
+    await p.wait(120);
+    p.w.document.querySelector('[data-tab="log"]').click();
+    assert.equal(p.$('notaLog'), null);
+  });
+
   test('tab bertukar: Status ↔ Log', async () => {
     p = loadPage({ ls: login, api: () => DASH });
     await p.wait(120);

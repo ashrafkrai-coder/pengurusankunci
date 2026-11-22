@@ -415,6 +415,63 @@ describe('Halaman imbas (pelayar guru, jsdom)', () => {
   });
 });
 
+describe('Prestasi dashboard', () => {
+  const post = (g, body) => JSON.parse(g.ctx.doPost({ postData: { contents: JSON.stringify(body) } }).getContent());
+
+  test('iso_ pantas = hasil Utilities.formatDate (+08:00)', () => {
+    const g = gas();
+    for (const s of ['2026-03-01T01:00:00Z', '2026-11-21T15:59:59Z', '2026-12-31T16:00:00Z', '2024-02-29T23:30:00Z']) {
+      const d = g.D(s);
+      assert.equal(g.ctx.iso_(d), formatDate(d, 'x', "yyyy-MM-dd'T'HH:mm:ssXXX"), s);
+    }
+    assert.equal(g.ctx.iso_('bukan tarikh'), '');
+  });
+
+  test('cache: panggilan kedua tidak membaca Sheet semula', () => {
+    const g = gas([['2026-03-01T01:00:00Z', 'MAKMAL-1', 'Cikgu Ali', 'Ambil']]);
+    const t = akaun(g, 'ali', 'Cikgu Ali');
+    const d1 = post(g, { action: 'getDashboard', token: t });
+    // Ubah Sheet terus (bukan melalui imbasan): cache masih dipakai
+    g.sheet('Log_Imbas').appendRow([g.D('2026-03-01T02:00:00Z'), 'MAKMAL-1', 'Cikgu Ali', 'Pulang']);
+    const d2 = post(g, { action: 'getDashboard', token: t });
+    assert.equal(d1.bilik[0].status, 'Ambil');
+    assert.equal(d2.bilik[0].status, 'Ambil', 'dari cache');
+    assert.ok(g.cache.dash, 'disimpan dalam CacheService');
+  });
+
+  test('cache dibuang serta-merta apabila ada imbasan baharu', () => {
+    const g = gas();
+    const t = akaun(g, 'ali', 'Cikgu Ali');
+    assert.equal(post(g, { action: 'getDashboard', token: t }).bilik[0].status, 'Pulang');
+    g.ctx.prosesImbas('MAKMAL-1', t);
+    assert.equal(g.cache.dash, undefined);
+    const d = post(g, { action: 'getDashboard', token: t });
+    assert.equal(d.bilik[0].status, 'Ambil', 'imbasan terus kelihatan');
+    assert.equal(d.bilik[0].pemegang, 'Cikgu Ali');
+  });
+
+  test('akaun disekat tetap ditolak walaupun data dashboard di-cache', () => {
+    const g = gas();
+    const t = akaun(g, 'ali', 'Cikgu Ali');
+    post(g, { action: 'getDashboard', token: t });
+    g.sheet('Pengguna').data[1][5] = 'Digantung';
+    assert.equal(post(g, { action: 'getDashboard', token: t }).auth, false);
+  });
+
+  test('hanya 300 rekod sejarah terkini dihantar; status dikira daripada semua log', () => {
+    const log = [];
+    for (let i = 0; i < 700; i++) { // 350 pasangan Ambil/Pulang
+      const t = new Date(Date.UTC(2026, 0, 1) + i * 60000).toISOString();
+      log.push([t, 'BILIK-SENI', 'Cikgu Ali', i % 2 ? 'Pulang' : 'Ambil']);
+    }
+    log.push(['2025-12-01T00:00:00Z', 'MAKMAL-1', 'Cikgu Bala', 'Ambil']); // rekod lama, belum pulang
+    const d = gas(log).call('getDashboard_');
+    assert.equal(d.log.length, 300);
+    assert.equal(d.jumlahLog, 351);
+    assert.equal(d.bilik.find((b) => b.idKunci === 'MAKMAL-1').status, 'Ambil', 'rekod lama masih dikira');
+  });
+});
+
 describe('getDashboard_', () => {
   test('memasangkan Ambil & Pulang serta status bilik', () => {
     const g = gas([

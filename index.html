@@ -585,6 +585,11 @@
       html += logRow(r);
     });
     if (hariLepas !== null) html += '</div>';
+    // Pelayan hanya menghantar rekod terkini; maklumkan apabila semua yang dihantar sudah dipapar
+    if (shown.length && rows.length <= logHad && data.jumlahLog > data.log.length) {
+      html += '<p id="notaLog" class="text-center text-[12px] muted pt-3">Memaparkan ' + data.log.length + ' rekod terkini daripada ' +
+        data.jumlahLog + '. Rekod lebih lama ada dalam tab Log_Imbas.</p>';
+    }
     $('area').innerHTML = shown.length ? '<div class="fade">' + html + '</div>'
       : empty('history', 'Tiada rekod sepadan', data.log.length ? 'Cuba ubah carian atau penapis.' : '');
     $('muatLagi').classList.toggle('hidden', rows.length <= logHad);
