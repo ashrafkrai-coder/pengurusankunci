@@ -48,6 +48,9 @@ class Range {
     return this;
   }
   setFormulas(vals) { return this.setValues(vals); }
+  getValue() { return this.getValues()[0][0]; }
+  setValue(v) { return this.setValues([[v]]); }
+  setFormula(f) { return this.setValues([[f]]); }
   setNumberFormat() { return this; }
   setFontWeight() { return this; }
   setBackground() { return this; }
@@ -69,6 +72,7 @@ class Sheet {
   clear() { this.data = []; }
   setFrozenRows() {}
   setColumnWidths() {}
+  setColumnWidth() {}
 }
 
 class Spreadsheet {

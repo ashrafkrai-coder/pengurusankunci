@@ -25,12 +25,39 @@ describe('setupSheets', () => {
     const names = g.ss.getSheets().map((s) => s.name).sort();
     assert.deepEqual(names, ['Log_Imbas', 'Nama_Bilik', 'Nama_Guru', 'Pengguna']);
     const bilik = g.sheet('Nama_Bilik');
-    assert.deepEqual(bilik.data[0], ['ID_Kunci', 'Nama_Bilik', 'Status_Semasa', 'Pemegang_Terkini', 'Masa_Terkini']);
+    assert.deepEqual([...bilik.data[0]].slice(0, 6), ['ID_Kunci', 'Nama_Bilik', 'Status_Semasa', 'Pemegang_Terkini', 'Masa_Terkini', 'URL_Tag_NFC']);
+    assert.equal(bilik.data[0][7], 'URL_Web_App');
     assert.equal(bilik.data.length, 101);
     assert.match(bilik.data[1][2], /^=IF\(\$A2=""/);
     assert.match(bilik.data[100][4], /\$A101/);
+    assert.match(bilik.data[1][5], /^=IF\(\$A2="","",\$H\$2&"\?kunci="&ENCODEURL\(\$A2\)\)$/, 'formula URL tag');
     assert.deepEqual(g.sheet('Log_Imbas').data[0], ['Masa', 'ID_Kunci', 'Nama_Guru', 'Tindakan']);
     assert.equal(g.calls.alerts.length, 1);
+  });
+
+  test('formula status C–E dibalut ARRAYFORMULA (baca rekod TERAKHIR, bukan pertama)', () => {
+    const g = loadGas({});
+    g.ctx.setupSheets();
+    const row = g.sheet('Nama_Bilik').data[1];
+    for (const col of [2, 3, 4]) assert.match(row[col], /ARRAYFORMULA\(LOOKUP\(2,1\/\(Log_Imbas!\$B\$2:\$B=\$A2\)/);
+  });
+
+  test('ID_Kunci: formula dijana daripada Nama_Bilik untuk sel kosong; ID ditaip tidak diubah', () => {
+    const g = loadGas({ bilik: [['MAKMAL-1', 'Makmal Komputer 1'], ['', 'BILIK PSV']], guru: GURU, log: [] });
+    g.ctx.setupSheets();
+    const data = g.sheet('Nama_Bilik').data;
+    assert.equal(data[1][0], 'MAKMAL-1', 'ID manual dikekalkan');
+    assert.equal(data[2][0], '=IF($B3="","",REGEXREPLACE(REGEXREPLACE(UPPER(TRIM($B3)),"[^A-Z0-9]+","-"),"^-+|-+$",""))');
+  });
+
+  test('URL Web App diisi automatik di H2 jika kosong, tidak ditimpa jika sudah ada', () => {
+    const g = loadGas({});
+    g.ctx.ScriptApp = { getService: () => ({ getUrl: () => 'https://script.google.com/macros/s/X/exec' }) };
+    g.ctx.setupSheets();
+    assert.equal(g.sheet('Nama_Bilik').data[1][7], 'https://script.google.com/macros/s/X/exec');
+    g.sheet('Nama_Bilik').data[1][7] = 'https://script.google.com/macros/s/LAIN/exec';
+    g.ctx.setupSheets();
+    assert.equal(g.sheet('Nama_Bilik').data[1][7], 'https://script.google.com/macros/s/LAIN/exec');
   });
 
   test('tidak memadam tab Pengguna sedia ada', () => {
@@ -55,7 +82,8 @@ describe('setupSheets', () => {
     const g = loadGas({});
     g.ctx.setupSheets();
     assert.equal(g.sheet('Nama_Guru').data[1][0], 'Cikgu Contoh Satu');
-    assert.equal(g.sheet('Nama_Bilik').data[1][0], 'MAKMAL-1');
+    assert.equal(g.sheet('Nama_Bilik').data[1][1], 'Makmal Komputer 1');
+    assert.match(g.sheet('Nama_Bilik').data[1][0], /^=IF\(\$B2=""/, 'ID contoh dijana oleh formula');
   });
 });
 

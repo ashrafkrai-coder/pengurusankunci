@@ -29,27 +29,41 @@ function setupSheets() {
 
   // --- Nama_Bilik ---
   let sh = ss.getSheetByName(SH_BILIK) || ss.insertSheet(SH_BILIK);
-  sh.getRange('A1:E1').setValues([['ID_Kunci', 'Nama_Bilik', 'Status_Semasa', 'Pemegang_Terkini', 'Masa_Terkini']]);
+  sh.getRange('A1:F1').setValues([['ID_Kunci', 'Nama_Bilik', 'Status_Semasa', 'Pemegang_Terkini', 'Masa_Terkini', 'URL_Tag_NFC']]);
   if (kosong(sh)) {
-    sh.getRange('A2:B4').setValues([
-      ['MAKMAL-1', 'Makmal Komputer 1'],
-      ['BILIK-SENI', 'Bilik Pendidikan Seni'],
-      ['BILIK-MUZIK', 'Bilik Muzik']
-    ]);
+    sh.getRange('B2:B4').setValues([['Makmal Komputer 1'], ['Bilik Pendidikan Seni'], ['Bilik Muzik']]);
   }
+  // H1:H2 = URL Web App (satu sel input; kolum URL_Tag_NFC merujuknya)
+  sh.getRange('H1').setValue('URL_Web_App');
+  if (!String(sh.getRange('H2').getValue()).trim()) {
+    let url = '';
+    try { url = ScriptApp.getService().getUrl() || ''; } catch (e) { url = ''; }
+    sh.getRange('H2').setValue(url);
+  }
+
   const rows = 100; // formula disediakan untuk baris 2 hingga 101
-  const fC = [], fD = [], fE = [];
+  const idSedia = sh.getRange(2, 1, rows, 1).getValues();
+  const fC = [], fD = [], fE = [], fF = [];
   for (let r = 2; r < 2 + rows; r++) {
-    fC.push(['=IF($A' + r + '="","",IFERROR(LOOKUP(2,1/(Log_Imbas!$B$2:$B=$A' + r + '),Log_Imbas!$D$2:$D),"Pulang"))']);
-    fD.push(['=IF($A' + r + '="","",IF($C' + r + '="Ambil",IFERROR(LOOKUP(2,1/(Log_Imbas!$B$2:$B=$A' + r + '),Log_Imbas!$C$2:$C),"-"),"-"))']);
-    fE.push(['=IF($A' + r + '="","",IFERROR(LOOKUP(2,1/(Log_Imbas!$B$2:$B=$A' + r + '),Log_Imbas!$A$2:$A),"-"))']);
+    // ID_Kunci: dijana daripada Nama_Bilik jika sel masih kosong (ID yang ditaip tidak diubah)
+    if (!String(idSedia[r - 2][0]).trim()) {
+      sh.getRange(r, 1).setFormula(formulaId_(r));
+    }
+    // ARRAYFORMULA wajib: tanpanya LOOKUP(2,1/(...)) hanya membaca baris pertama log
+    fC.push(['=IF($A' + r + '="","",IFERROR(ARRAYFORMULA(LOOKUP(2,1/(Log_Imbas!$B$2:$B=$A' + r + '),Log_Imbas!$D$2:$D)),"Pulang"))']);
+    fD.push(['=IF($A' + r + '="","",IF($C' + r + '="Ambil",IFERROR(ARRAYFORMULA(LOOKUP(2,1/(Log_Imbas!$B$2:$B=$A' + r + '),Log_Imbas!$C$2:$C)),"-"),"-"))']);
+    fE.push(['=IF($A' + r + '="","",IFERROR(ARRAYFORMULA(LOOKUP(2,1/(Log_Imbas!$B$2:$B=$A' + r + '),Log_Imbas!$A$2:$A)),"-"))']);
+    fF.push(['=IF($A' + r + '="","",$H$2&"?kunci="&ENCODEURL($A' + r + '))']);
   }
   sh.getRange(2, 3, rows, 1).setFormulas(fC);
   sh.getRange(2, 4, rows, 1).setFormulas(fD);
   sh.getRange(2, 5, rows, 1).setFormulas(fE);
+  sh.getRange(2, 6, rows, 1).setFormulas(fF);
   sh.getRange(2, 5, rows, 1).setNumberFormat(FMT_SHEET);
-  styleHeader_(sh, 5);
+  styleHeader_(sh, 6);
   sh.setColumnWidths(1, 5, 170);
+  sh.setColumnWidth(6, 420);
+  sh.setColumnWidth(8, 300);
 
   // --- Log_Imbas ---
   sh = ss.getSheetByName(SH_LOG) || ss.insertSheet(SH_LOG);
@@ -76,6 +90,11 @@ function setupSheets() {
   const def = ss.getSheetByName('Sheet1') || ss.getSheetByName('Helaian1');
   if (def && ss.getSheets().length > 4) ss.deleteSheet(def);
   SpreadsheetApp.getUi().alert('Siap! 4 tab telah disediakan. Data sedia ada tidak diubah; data contoh hanya diisi dalam tab yang kosong.');
+}
+
+/** Formula ID_Kunci untuk baris r: "Bilik PSV" -> "BILIK-PSV" */
+function formulaId_(r) {
+  return '=IF($B' + r + '="","",REGEXREPLACE(REGEXREPLACE(UPPER(TRIM($B' + r + ')),"[^A-Z0-9]+","-"),"^-+|-+$",""))';
 }
 
 function styleHeader_(sh, n) {
