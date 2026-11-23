@@ -15,7 +15,7 @@ function loadPage(o = {}) {
   const calls = [];
   const alerts = [];
   const dom = new JSDOM(HTML, {
-    url: 'https://contoh.test/',
+    url: o.url || 'https://contoh.test/',
     runScripts: 'dangerously',
     pretendToBeVisual: true,
     beforeParse(w) {

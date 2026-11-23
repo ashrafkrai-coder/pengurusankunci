@@ -140,6 +140,7 @@ function doPost(e) {
     if (b.action === 'login') return json_(login_(b));
     if (b.action === 'logout') return json_(logout_(b));
     if (b.action === 'getDashboard') return json_(dashboardAuth_(b.token));
+    if (b.action === 'imbas') return json_(imbasApi_(b));
     return json_({ ok: false, error: 'Tindakan tidak dikenali.' });
   } catch (err) {
     return json_({ ok: false, error: (err && err.message) || String(err) });
@@ -245,8 +246,26 @@ function logRows_() {
 /* ============================================================
  *  MOD 1: IMBAS NFC GURU
  * ============================================================ */
+/**
+ * Senarai bilik dengan cache 5 minit (CacheService jauh lebih pantas daripada membaca Sheet).
+ * Hanya untuk paparan halaman imbas; rekodImbas_ sentiasa membaca Sheet terus.
+ */
+function bilikCache_() {
+  const c = CacheService.getScriptCache();
+  const raw = c.get('bilik');
+  if (raw) {
+    try { return JSON.parse(raw); } catch (e) { /* jana semula */ }
+  }
+  const bm = bilikMap_();
+  const s = JSON.stringify(bm);
+  if (s.length < 90000) c.put('bilik', s, 300);
+  return bm;
+}
+
 function imbasPage_(kunci) {
-  const b = bilikMap_().map[kunci.trim().toUpperCase()];
+  const id = kunci.trim().toUpperCase();
+  // Bilik baharu yang belum masuk cache: semak Sheet terus
+  const b = bilikCache_().map[id] || bilikMap_().map[id];
   const data = {
     kunci: kunci.trim(),
     bilik: b ? b.nama : '',
@@ -275,15 +294,10 @@ function ujiImbas() {
   const b = bm.map[bm.order[0]];
   const r = rekodImbas_(b.id, akaun.nama);
   console.log('Hasil ujian: ' + JSON.stringify(r));
-  let url = '';
-  try { url = ScriptApp.getService().getUrl() || ''; } catch (e) { url = ''; }
-  if (url) {
-    bm.order.forEach(function (k) {
-      console.log('URL tag NFC ' + bm.map[k].nama + ': ' + url + '?kunci=' + encodeURIComponent(bm.map[k].id));
-    });
-  } else {
-    console.log('Deploy sebagai Web App dahulu untuk mendapatkan URL tag NFC.');
-  }
+  // URL pantas (PWA). URL Web App lama (/exec?kunci=) masih berfungsi untuk tag sedia ada.
+  bm.order.forEach(function (k) {
+    console.log('URL tag NFC ' + bm.map[k].nama + ': ' + DASHBOARD_URL + '?kunci=' + encodeURIComponent(bm.map[k].id));
+  });
   return r;
 }
 
@@ -313,6 +327,16 @@ function prosesImbas(kunci, token) {
   // Awalan "AUTH:" memberitahu halaman imbas supaya memaparkan borang log masuk
   if (!u) throw new Error('AUTH: Hanya guru berdaftar boleh merekod kunci. Sila log masuk.');
   return rekodImbas_(kunci, u.nama);
+}
+
+/**
+ * Imbasan melalui PWA (tag NFC -> DASHBOARD_URL?kunci=ID). Satu panggilan POST sahaja,
+ * jauh lebih pantas daripada halaman HtmlService. Token = sesi log masuk dashboard.
+ */
+function imbasApi_(b) {
+  const u = sesi_(b.token);
+  if (!u) return { ok: false, auth: false, error: 'Hanya guru berdaftar boleh merekod kunci. Sila log masuk.' };
+  return rekodImbas_(b.kunci, u.nama);
 }
 
 /** Logik rekod Ambil/Pulang (nama guru sudah disahkan oleh pemanggil). */

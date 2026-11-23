@@ -42,10 +42,14 @@ Formula baris 2 (seret ke bawah):
 Untuk setiap kunci, tulis URL berikut pada tag NFC (guna aplikasi **NFC Tools** atau **NFC TagWriter**, jenis rekod *URL*):
 
 ```
-https://script.google.com/macros/s/XXXXXXXX/exec?kunci=MAKMAL-1
+https://mykey-eta.vercel.app/?kunci=MAKMAL-1
 ```
 
-`MAKMAL-1` mesti sama dengan `ID_Kunci` dalam tab `Nama_Bilik`.
+`MAKMAL-1` mesti sama dengan `ID_Kunci` dalam tab `Nama_Bilik`. Dalam Sheet, isi sel **H2** tab `Nama_Bilik` dengan `https://mykey-eta.vercel.app/` supaya kolum `URL_Tag_NFC` memaparkan URL ini untuk setiap bilik.
+
+**Kenapa URL PWA, bukan URL `/exec`?** URL PWA dibuka serta-merta dari Vercel (atau cache telefon), guna sesi log masuk dashboard yang sedia ada, dan hanya membuat **satu** panggilan ke Apps Script untuk merekod. URL `/exec?kunci=` lama (2–4 saat) masih berfungsi, jadi tag sedia ada tidak rosak; tulis semula tag mengikut masa yang sesuai. URL PWA juga lebih pendek dan muat dalam tag NTAG213.
+
+Nota iPhone: aplikasi yang dipasang di *Home Screen* dan Safari tidak berkongsi log masuk. Kali pertama tap tag, guru log masuk sekali dalam Safari (tanda *Ingat saya*).
 
 **Hanya guru berdaftar boleh merekod.** Guru sentuh telefon pada tag. Kali pertama di telefon itu, guru log masuk dengan nama pengguna dan kata laluan akaun dashboard (sesi diingat 90 hari); selepas itu setiap tap terus direkod. Imbasan seterusnya bertukar automatik Ambil / Pulang.
 

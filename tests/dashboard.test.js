@@ -463,3 +463,101 @@ describe('Dashboard (sudah log masuk)', () => {
     assert.equal(baris(), 1, 'penapis menetapkan semula had');
   });
 });
+
+describe('Imbasan NFC melalui PWA (?kunci=ID)', () => {
+  const LOGIN = { kunci_token: 'tok', kunci_user: JSON.stringify({ username: 'ali', nama: 'Cikgu Ali' }), kunci_cache: JSON.stringify(DASH) };
+  const AMBIL = { ok: true, bilik: 'Bilik A', tindakan: 'Ambil', guru: 'Cikgu Ali', masa: '01/03/2026 8:05 pagi' };
+  const URL_TAG = 'https://contoh.test/?kunci=A';
+  const teks = () => p.$('imbasSheet').textContent;
+
+  test('sudah log masuk: SATU panggilan imbas, papar hasil, URL dibersihkan, dashboard dimuat', async () => {
+    p = loadPage({ url: URL_TAG, ls: LOGIN, api: (b) => (b.action === 'imbas' ? AMBIL : DASH) });
+    assert.equal(p.hidden('imbasSheet'), false, 'helaian dibuka serta-merta');
+    assert.match(teks(), /Merekod kunci/);
+    assert.match(teks(), /Bilik A/, 'nama bilik daripada cache sebelum pelayan menjawab');
+    await p.wait(120);
+    assert.deepEqual(p.calls[0].body, { action: 'imbas', kunci: 'A', token: 'tok' });
+    assert.deepEqual(p.calls[1].body, { action: 'getDashboard', token: 'tok' });
+    assert.equal(p.calls.filter((c) => c.body.action === 'imbas').length, 1);
+    assert.match(teks(), /Kunci DIAMBIL/);
+    assert.match(teks(), /Cikgu Ali/);
+    assert.match(teks(), /8:05 pagi/);
+    assert.equal(p.w.location.search, '', '?kunci= dibuang: muat semula tidak merekod lagi');
+    p.$('imButang').querySelector('[data-im="tutup"]').click();
+    assert.equal(p.hidden('imbasSheet'), true);
+  });
+
+  test('Pulang & imbasan berulang dipaparkan dengan betul', async () => {
+    p = loadPage({ url: URL_TAG, ls: LOGIN, api: (b) => (b.action === 'imbas' ? { ...AMBIL, tindakan: 'Pulang', ulang: true } : DASH) });
+    await p.wait(120);
+    assert.match(teks(), /Kunci DIPULANGKAN/);
+    assert.match(teks(), /Imbasan berulang/);
+  });
+
+  test('belum log masuk: tiada panggilan, borang log masuk; selepas log masuk kunci terus direkod', async () => {
+    p = loadPage({
+      url: URL_TAG,
+      api: (b) => (b.action === 'login' ? { ok: true, token: 't9', pengguna: { username: 'ali', nama: 'Cikgu Ali' } }
+        : b.action === 'imbas' ? AMBIL : DASH)
+    });
+    await p.wait();
+    assert.equal(p.calls.length, 0);
+    assert.equal(p.hidden('authScreen'), false);
+    assert.match(p.$('authMsg').textContent, /merekod kunci A/);
+    p.$('aUser').value = 'ali';
+    p.$('aPass').value = 'rahsia123';
+    p.submitAuth();
+    await p.wait(150);
+    assert.equal(p.calls[0].body.action, 'login');
+    assert.deepEqual(p.calls[1].body, { action: 'imbas', kunci: 'A', token: 't9' });
+    assert.match(teks(), /Kunci DIAMBIL/);
+  });
+
+  test('sesi tamat (auth:false): log keluar, kemudian rekod selepas log masuk semula', async () => {
+    let sesiSah = false;
+    p = loadPage({
+      url: URL_TAG, ls: LOGIN,
+      api: (b) => {
+        if (b.action === 'login') { sesiSah = true; return { ok: true, token: 'baru', pengguna: { username: 'ali', nama: 'Cikgu Ali' } }; }
+        if (b.action === 'imbas') return sesiSah ? AMBIL : { ok: false, auth: false, error: 'Hanya guru berdaftar boleh merekod kunci. Sila log masuk.' };
+        return DASH;
+      }
+    });
+    await p.wait(120);
+    assert.equal(p.hidden('authScreen'), false);
+    assert.equal(p.hidden('imbasSheet'), true);
+    assert.equal(p.w.localStorage.getItem('kunci_token'), null);
+    p.$('aUser').value = 'ali';
+    p.$('aPass').value = 'rahsia123';
+    p.submitAuth();
+    await p.wait(150);
+    assert.deepEqual(p.calls.at(-2).body, { action: 'imbas', kunci: 'A', token: 'baru' });
+    assert.match(teks(), /Kunci DIAMBIL/);
+  });
+
+  test('ralat pelayan: papar mesej + Cuba lagi menghantar semula', async () => {
+    let n = 0;
+    p = loadPage({ url: URL_TAG, ls: LOGIN, api: (b) => (b.action === 'imbas' ? (++n === 1 ? { ok: false, error: 'Rangkaian sibuk' } : AMBIL) : DASH) });
+    await p.wait(120);
+    assert.match(teks(), /Gagal merekod/);
+    assert.match(teks(), /Rangkaian sibuk/);
+    p.$('imButang').querySelector('[data-im="ulang"]').click();
+    await p.wait(120);
+    assert.equal(n, 2);
+    assert.match(teks(), /Kunci DIAMBIL/);
+  });
+
+  test('data daripada pelayan di-escape (tiada XSS)', async () => {
+    p = loadPage({ url: URL_TAG, ls: LOGIN, api: (b) => (b.action === 'imbas' ? { ...AMBIL, guru: '<img src=x onerror=alert(1)>' } : DASH) });
+    await p.wait(120);
+    assert.equal(p.$('imbasSheet').querySelector('img'), null);
+    assert.match(teks(), /<img src=x/);
+  });
+
+  test('tanpa ?kunci=: tiada panggilan imbas', async () => {
+    p = loadPage({ ls: LOGIN, api: () => DASH });
+    await p.wait(120);
+    assert.equal(p.calls.filter((c) => c.body.action === 'imbas').length, 0);
+    assert.equal(p.hidden('imbasSheet'), true);
+  });
+});

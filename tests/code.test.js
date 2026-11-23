@@ -222,17 +222,16 @@ describe('prosesImbas: hanya guru berdaftar', () => {
     assert.deepEqual(g.calls.lock, []);
   });
 
-  test('ujiImbas: rekod bilik pertama oleh akaun Aktif pertama, papar URL tag', () => {
+  test('ujiImbas: rekod bilik pertama oleh akaun Aktif pertama, papar URL tag pantas (PWA)', () => {
     const g = gas();
     akaun(g, 'ali', 'Cikgu Ali');
     const logs = [];
     g.ctx.console = { log: (m) => logs.push(m) };
-    g.ctx.ScriptApp = { getService: () => ({ getUrl: () => 'https://script.google.com/macros/s/X/exec' }) };
     const r = g.call('ujiImbas');
     assert.equal(r.tindakan, 'Ambil');
     assert.equal(r.bilik, 'Makmal Komputer 1');
     assert.equal(r.guru, 'Cikgu Ali');
-    assert.ok(logs.some((l) => l.endsWith('/exec?kunci=MAKMAL-1')));
+    assert.ok(logs.includes('URL tag NFC Makmal Komputer 1: https://mykey-eta.vercel.app/?kunci=MAKMAL-1'));
     assert.equal(logs.filter((l) => l.startsWith('URL tag NFC')).length, 3);
   });
 
@@ -412,6 +411,67 @@ describe('Halaman imbas (pelayar guru, jsdom)', () => {
     assert.deepEqual(h.panggilan, []);
     assert.equal(h.w.localStorage.getItem('nfc_kunci_guru'), null);
     assert.ok(h.$('f'));
+  });
+});
+
+describe('API imbas (tag NFC -> PWA, satu panggilan POST)', () => {
+  const post = (g, body) => JSON.parse(g.ctx.doPost({ postData: { contents: JSON.stringify(body) } }).getContent());
+
+  test('tanpa token / token palsu: auth:false, tiada rekod', () => {
+    const g = gas();
+    for (const token of [undefined, '', 'palsu']) {
+      const r = post(g, { action: 'imbas', kunci: 'MAKMAL-1', token });
+      assert.equal(r.ok, false);
+      assert.equal(r.auth, false);
+      assert.match(r.error, /Hanya guru berdaftar/);
+    }
+    assert.equal(g.sheet('Log_Imbas').data.length, 1);
+  });
+
+  test('guru berdaftar: Ambil kemudian Pulang, nama daripada AKAUN', () => {
+    const g = gas();
+    const t = akaun(g, 'ali', 'Cikgu Ali Berdaftar');
+    const r1 = post(g, { action: 'imbas', kunci: 'makmal-1', token: t, nama: 'Nama Palsu' });
+    assert.equal(r1.ok, true);
+    assert.equal(r1.tindakan, 'Ambil');
+    assert.equal(r1.bilik, 'Makmal Komputer 1');
+    assert.equal(r1.guru, 'Cikgu Ali Berdaftar');
+    undur(g);
+    assert.equal(post(g, { action: 'imbas', kunci: 'MAKMAL-1', token: t }).tindakan, 'Pulang');
+    assert.equal(g.sheet('Log_Imbas').data.length, 3);
+  });
+
+  test('akaun disekat: auth:false', () => {
+    const g = gas();
+    const t = akaun(g, 'ali', 'Cikgu Ali');
+    g.sheet('Pengguna').data[1][5] = 'Digantung';
+    assert.equal(post(g, { action: 'imbas', kunci: 'MAKMAL-1', token: t }).auth, false);
+  });
+
+  test('ID kunci tidak wujud: ralat jelas (ok:false)', () => {
+    const g = gas();
+    const t = akaun(g, 'ali', 'Cikgu Ali');
+    const r = post(g, { action: 'imbas', kunci: 'TIADA', token: t });
+    assert.equal(r.ok, false);
+    assert.match(r.error, /tiada dalam tab Nama_Bilik/);
+  });
+});
+
+describe('Halaman imbas lama (/exec?kunci=): cache senarai bilik', () => {
+  test('senarai bilik disimpan dalam CacheService', () => {
+    const g = gas();
+    g.ctx.imbasPage_('MAKMAL-1');
+    assert.ok(g.cache.bilik);
+    assert.ok(JSON.parse(g.cache.bilik).map['MAKMAL-1']);
+  });
+
+  test('bilik baharu yang belum dalam cache tetap sah', () => {
+    const g = gas();
+    g.ctx.imbasPage_('MAKMAL-1');
+    g.sheet('Nama_Bilik').appendRow(['BILIK-BARU', 'Bilik Baru']);
+    const html = g.ctx.imbasPage_('BILIK-BARU').getContent();
+    assert.match(html, /"valid":true/);
+    assert.match(html, /Bilik Baru/);
   });
 });
 

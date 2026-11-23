@@ -1,4 +1,4 @@
-const CACHE = 'kunci-sekolah-v10';
+const CACHE = 'kunci-sekolah-v11';
 const SHELL = [
   './', './index.html', './manifest.json', './tailwind.css', './vendor/lucide.min.js',
   './icon-192.png', './icon-512.png', './icon-maskable-512.png'
