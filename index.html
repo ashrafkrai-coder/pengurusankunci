@@ -770,10 +770,25 @@
 
   /* -- Bilik -- */
   var bilikAdmin = [], idDisunting = false;
+  // URL untuk ditulis pada tag NFC: alamat aplikasi ini + ?kunci=ID
+  function urlTag(id){ return location.origin + location.pathname.replace(/index\.html$/, '') + '?kunci=' + encodeURIComponent(id); }
+  async function salin(teks){
+    try { await navigator.clipboard.writeText(teks); return true; } catch(e){}
+    try { // pelayar lama / tanpa kebenaran papan klip
+      var ta = document.createElement('textarea');
+      ta.value = teks; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;opacity:0;top:0';
+      document.body.appendChild(ta); ta.select();
+      var ok = document.execCommand && document.execCommand('copy');
+      document.body.removeChild(ta);
+      return !!ok;
+    } catch(e){ return false; }
+  }
   function renderBilikAdmin(){
     $('bilikSenarai').innerHTML = bilikAdmin.length ? bilikAdmin.map(function(b){
       return '<div class="card rounded-2xl p-3" data-bid="' + esc(b.idKunci) + '">' +
-        '<p class="text-[11px] muted font-semibold break-all mb-1.5">' + esc(b.idKunci) + '</p>' +
+        '<p class="text-[11px] muted font-semibold break-all mb-1">' + esc(b.idKunci) + '</p>' +
+        '<div class="flex items-center gap-2 mb-2"><span class="bUrl text-[11.5px] muted break-all flex-1 min-w-0 select-all">' + esc(urlTag(b.idKunci)) + '</span>' +
+        '<button type="button" data-bsalin class="press h-8 px-2.5 rounded-lg soft text-[12px] font-semibold flex-none">Salin URL</button></div>' +
         '<div class="flex gap-2"><input type="text" maxlength="80" value="' + esc(b.nama) + '" aria-label="Nama bilik ' + esc(b.idKunci) + '" class="bNamaInp fld flex-1 min-w-0 h-10 px-3 rounded-xl text-[14px]">' +
         '<button type="button" data-bsimpan class="press h-10 px-3 rounded-xl btn-on text-[13px] font-semibold flex-none">Simpan</button>' +
         '<button type="button" data-bpadam class="press w-10 h-10 rounded-xl flex items-center justify-center flex-none" style="background:var(--bad-soft);color:var(--bad)" aria-label="Padam bilik ' + esc(b.idKunci) + '"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></div>';
@@ -805,14 +820,24 @@
     e.preventDefault();
     var nama = $('bNama').value.trim(), id = $('bId').value.trim();
     if (!nama || !id) return pesan('bilikMsg', 'Sila isi nama bilik dan ID kunci.');
-    if (await opBilik({ op: 'tambah', id: id, nama: nama }, 'Bilik "' + nama + '" ditambah. Tulis URL ?kunci=' + id.toUpperCase() + ' pada tag NFC.', $('bTambah'))) {
+    var url = urlTag(id.toUpperCase());
+    if (await opBilik({ op: 'tambah', id: id, nama: nama }, 'Bilik "' + nama + '" ditambah. URL tag NFC: ' + url, $('bTambah'))) {
       $('bNama').value = ''; $('bId').value = ''; idDisunting = false;
+      // URL terus disalin supaya boleh ditampal ke NFC Tools / NFC TagWriter
+      if (await salin(url)) pesan('bilikMsg', 'Bilik "' + nama + '" ditambah. URL tag NFC (telah disalin): ' + url, true);
     }
   });
   $('bilikSenarai').addEventListener('click', function(e){
     var kad = e.target.closest('[data-bid]');
     if (!kad) return;
     var id = kad.dataset.bid;
+    if (e.target.closest('[data-bsalin]')) {
+      var btnSalin = e.target.closest('button'), url = urlTag(id);
+      salin(url).then(function(ok){
+        pesan('bilikMsg', ok ? 'URL ' + id + ' disalin: ' + url : 'Tidak dapat menyalin. URL: ' + url, ok);
+      });
+      return;
+    }
     if (e.target.closest('[data-bsimpan]')) {
       var nama = kad.querySelector('.bNamaInp').value.trim();
       if (!nama) return pesan('bilikMsg', 'Nama bilik tidak boleh kosong.');

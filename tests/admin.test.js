@@ -140,6 +140,46 @@ describe('Urus Bilik', () => {
     assert.equal(kad('A'), null);
   });
 
+  const papanKlip = () => {
+    const disalin = [];
+    Object.defineProperty(p.w.navigator, 'clipboard', { value: { writeText: async (x) => { disalin.push(x); } }, configurable: true });
+    return disalin;
+  };
+
+  test('setiap bilik memaparkan URL tag NFC dan butang Salin URL', async () => {
+    await bukaSheet();
+    const disalin = papanKlip();
+    assert.equal(kad('A').querySelector('.bUrl').textContent, 'https://contoh.test/?kunci=A');
+    kad('A').querySelector('[data-bsalin]').click();
+    await p.wait(60);
+    assert.deepEqual(disalin, ['https://contoh.test/?kunci=A']);
+    assert.match(baca('bilikMsg'), /disalin/);
+    assert.equal(aksi('adminBilik').length, 0, 'menyalin tidak memanggil pelayan');
+  });
+
+  test('tambah bilik: URL tag NFC terus dipaparkan dan disalin', async () => {
+    await bukaSheet();
+    const disalin = papanKlip();
+    p.$('bNama').value = 'Bilik Muzik';
+    p.$('bNama').dispatchEvent(new p.w.Event('input'));
+    p.$('bilikTambah').dispatchEvent(new p.w.Event('submit', { cancelable: true, bubbles: true }));
+    await p.wait(200);
+    assert.deepEqual(disalin, ['https://contoh.test/?kunci=BILIK-MUZIK']);
+    assert.ok(baca('bilikMsg').includes('(telah disalin): https://contoh.test/?kunci=BILIK-MUZIK'));
+    assert.equal(kad('BILIK-MUZIK').querySelector('.bUrl').textContent, 'https://contoh.test/?kunci=BILIK-MUZIK');
+  });
+
+  test('papan klip tidak tersedia: URL tetap dipaparkan dalam mesej', async () => {
+    await bukaSheet();
+    Object.defineProperty(p.w.navigator, 'clipboard', { value: { writeText: async () => { throw new Error('ditolak'); } }, configurable: true });
+    p.$('bNama').value = 'Stor';
+    p.$('bNama').dispatchEvent(new p.w.Event('input'));
+    p.$('bilikTambah').dispatchEvent(new p.w.Event('submit', { cancelable: true, bubbles: true }));
+    await p.wait(200);
+    assert.ok(baca('bilikMsg').includes('URL tag NFC: https://contoh.test/?kunci=STOR'));
+    assert.doesNotMatch(baca('bilikMsg'), /telah disalin/);
+  });
+
   test('sesi tamat: helaian ditutup dan skrin log masuk dipaparkan', async () => {
     await bukaSheet();
     p.w.fetch = async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ ok: false, auth: false, error: 'Sesi tamat' }) });
