@@ -1,0 +1,22 @@
+# Elak projek Supabase (pelan percuma) dijeda kerana tidak aktif, cth semasa cuti sekolah.
+# Memanggil fungsi api_ping setiap 3 hari. Kunci di bawah ialah kunci publishable (awam).
+# Nota: GitHub menghentikan jadual automatik jika repo tiada aktiviti 60 hari; buka tab Actions dan
+# tekan "Enable workflow" jika itu berlaku, atau jalankan secara manual dengan "Run workflow".
+name: Keepalive Supabase
+on:
+  schedule:
+    - cron: '17 2 */3 * *'
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Panggil api_ping
+        run: |
+          res=$(curl -fsS --retry 3 --retry-delay 5 -X POST \
+            "https://ckbribtplsmipkrlphgj.supabase.co/rest/v1/rpc/api_ping" \
+            -H "apikey: sb_publishable_0Xq6i4f-XP0GsA9cMxAHHg_efGmZxHK" \
+            -H "Content-Type: application/json" \
+            -d '{"b":{}}')
+          echo "$res"
+          echo "$res" | grep -q '"ok": *true'

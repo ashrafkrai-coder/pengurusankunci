@@ -11,6 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="preconnect" href="https://ckbribtplsmipkrlphgj.supabase.co" crossorigin>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -86,6 +87,7 @@
     </div>
 
     <div id="amaran" class="hidden fade text-[13px] px-4 py-3 rounded-2xl flex items-start gap-2" style="background:var(--bad-soft);color:var(--bad)"></div>
+    <div id="tertunda" class="hidden fade text-[13px] px-4 py-3 rounded-2xl flex items-start gap-2" style="background:var(--warn-soft);color:var(--warn)" role="status"></div>
 
     <!-- ===== Tab: Status ===== -->
     <section id="tabStatus" class="space-y-4">
@@ -135,6 +137,7 @@
         <h2 class="text-[17px] font-bold">Log &amp; Sejarah</h2>
         <div class="flex items-center gap-1">
           <span id="bilRekod" class="text-[12px] muted font-medium"></span>
+          <button id="btnPdf" class="press h-8 px-2.5 rounded-full flex items-center gap-1 text-[12px] font-semibold" style="color:var(--brand)" aria-label="Eksport laporan PDF"><i data-lucide="file-down" class="w-4 h-4"></i>PDF</button>
           <button id="resetFilter" class="press h-8 px-2.5 rounded-full muted flex items-center gap-1 text-[12px] font-semibold" aria-label="Set semula penapis"><i data-lucide="filter-x" class="w-4 h-4"></i>Set semula</button>
         </div>
       </div>
@@ -191,6 +194,29 @@
     </div>
     <button id="tutupAkaun" class="press w-full h-12 mt-3 rounded-2xl text-[15px] font-semibold muted">Tutup</button>
     <p class="tagline text-center text-[11px] muted mt-2 opacity-80"></p>
+  </div>
+</div>
+
+<!-- ================= Eksport laporan PDF ================= -->
+<div id="sheetPdf" class="hidden fixed inset-0 z-30 bg-black/40 flex items-end sm:items-center justify-center">
+  <div class="sheet-in w-full sm:max-w-md bg-white rounded-t-[28px] sm:rounded-[28px] p-5" style="padding-bottom:max(env(safe-area-inset-bottom),20px)">
+    <div class="w-10 h-1.5 rounded-full mx-auto mb-4 sm:hidden" style="background:var(--line)"></div>
+    <h2 class="font-bold text-[18px] mb-1">Eksport laporan PDF</h2>
+    <p class="text-[13px] muted mb-4">Pilih tempoh (mengikut tarikh kunci diambil).</p>
+    <div class="flex gap-2 overflow-x-auto no-scrollbar text-[13px] font-semibold mb-3">
+      <button type="button" data-pdf-hari="0" class="pdfChip chip press px-4 h-9 rounded-full flex-none">Hari ini</button>
+      <button type="button" data-pdf-hari="6" class="pdfChip chip press px-4 h-9 rounded-full flex-none">7 hari</button>
+      <button type="button" data-pdf-hari="29" class="pdfChip chip press px-4 h-9 rounded-full flex-none">30 hari</button>
+    </div>
+    <div class="grid grid-cols-2 gap-2 mb-3">
+      <label class="block text-[12px] font-semibold muted">Dari<input id="pdfDari" type="date" class="fld w-full h-11 px-3 rounded-2xl text-[14px] mt-1 font-normal"></label>
+      <label class="block text-[12px] font-semibold muted">Hingga<input id="pdfHingga" type="date" class="fld w-full h-11 px-3 rounded-2xl text-[14px] mt-1 font-normal"></label>
+    </div>
+    <div id="pdfMsg" class="hidden text-[13px] px-4 py-3 rounded-2xl mb-3" role="alert"></div>
+    <div class="grid grid-cols-2 gap-2">
+      <button id="pdfBatal" type="button" class="press h-12 rounded-2xl soft font-semibold">Batal</button>
+      <button id="pdfJana" type="button" class="press h-12 rounded-2xl btn-on font-semibold disabled:opacity-60">Muat Turun PDF</button>
+    </div>
   </div>
 </div>
 
@@ -293,7 +319,7 @@
   function getUser(){ try { return JSON.parse(lsGet(LS_USER)) || null; } catch(e){ return null; } }
 
   /* ---------- Panggilan API: fungsi RPC Supabase (satu panggilan = satu tindakan) ---------- */
-  var RPC = { daftar: 'api_daftar', login: 'api_login', logout: 'api_logout', getDashboard: 'api_dashboard', imbas: 'api_imbas' };
+  var RPC = { daftar: 'api_daftar', login: 'api_login', logout: 'api_logout', getDashboard: 'api_dashboard', imbas: 'api_imbas', padam: 'api_padam_log', eksport: 'api_eksport' };
   function api(body){
     var fn = RPC[body.action];
     if (!fn) return Promise.reject(new Error('Tindakan tidak dikenali'));
@@ -303,7 +329,9 @@
       headers: { 'Content-Type': 'application/json', apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY },
       body: JSON.stringify({ b: body })
     })
-      .then(function(res){ if (!res.ok) throw new Error('HTTP ' + res.status); return res.text(); })
+      // err.rangkaian = boleh dicuba semula kemudian (tiada internet / ralat pelayan)
+      .catch(function(){ var e = new Error('Tiada sambungan internet'); e.rangkaian = true; throw e; })
+      .then(function(res){ if (!res.ok) { var e = new Error('HTTP ' + res.status); e.rangkaian = res.status >= 500; throw e; } return res.text(); })
       .then(function(t){
         try { return JSON.parse(t); }
         catch(e){ throw new Error('Respons pelayan bukan JSON. Pastikan supabase/schema.sql telah dijalankan'); }
@@ -375,7 +403,9 @@
       if (!j.ok || !Array.isArray(j.bilik)) throw new Error(j.error || 'Respons tidak sah');
       data = j;
       lsSet(LS_DATA, JSON.stringify(j));
+      if (j.pengguna && j.pengguna.peranan) lsSet(LS_USER, JSON.stringify(Object.assign({}, getUser() || {}, { peranan: j.pengguna.peranan }))); // peranan terkini (cth dinaikkan jadi Admin)
       showWarn('');
+      hantarTertunda(); // hantar imbasan yang disimpan semasa tiada internet
     } catch (err) {
       showWarn('Gagal memuatkan data: ' + err.message + '. Memaparkan data tersimpan.');
     } finally {
@@ -417,7 +447,7 @@
   function hideAuth(){ $('authScreen').classList.add('hidden'); authMsg(''); }
   function logoutLocal(msg, ok){
     lsSet(LS_TOKEN, ''); lsSet(LS_USER, ''); lsSet(LS_DATA, '');
-    data = KOSONG; showWarn(''); tutupAkaun(); render();
+    data = KOSONG; showWarn(''); tutupAkaun(); realtimeHenti(); render();
     setAuthMode('login');
     showAuth(msg, ok);
   }
@@ -460,8 +490,10 @@
       hideAuth();
       render();
       // Datang dari tag NFC sebelum log masuk: teruskan rekod kunci itu
+      realtimeMula();
       if (kunciTertunda) { var k = kunciTertunda; kunciTertunda = ''; imbas(k); }
       else muat();
+      hantarTertunda();
     } catch (err) {
       authMsg(err.message);
     } finally {
@@ -519,9 +551,10 @@
       return;
     }
     $('imButang').dataset.kunci = k;
+    var idem = idBaru(), masaTap = new Date().toISOString();
     paparImbas({ ikon: 'loader-circle', pusing: true, nada: 't-use', label: 'Merekod kunci…', bilik: namaBilik(k) || k });
     try {
-      var j = await api({ action: 'imbas', kunci: k, token: getToken() });
+      var j = await api({ action: 'imbas', kunci: k, token: getToken(), idem: idem });
       if (j.auth === false) {
         tutupImbas();
         logoutLocal(j.error || 'Sesi tamat. Sila log masuk semula.');
@@ -544,6 +577,18 @@
         butang: BTN_SELESAI
       });
     } catch (err) {
+      if (err.rangkaian) {
+        // Tiada isyarat: simpan di telefon, hantar automatik kemudian (idem elak rekod berganda)
+        simpanGiliran({ kunci: k, idem: idem, masa: masaTap, u: (getUser() || {}).username || '' });
+        try { if (navigator.vibrate) navigator.vibrate([40, 60, 40, 60, 40]); } catch(e){}
+        paparImbas({
+          ikon: 'cloud-off', nada: 't-warn', label: 'Disimpan di telefon', bilik: namaBilik(k) || k,
+          detail: '<p>Tiada sambungan internet.</p><p class="text-[12.5px] mt-2">Imbasan pukul ' + esc(hm(new Date(masaTap))) +
+                  ' akan dihantar automatik apabila ada sambungan.</p>',
+          butang: BTN_SELESAI
+        });
+        return;
+      }
       paparImbas({
         ikon: 'triangle-alert', nada: 't-bad', label: 'Gagal merekod', bilik: namaBilik(k) || k,
         detail: '<p>' + esc(err.message) + '</p>',
@@ -559,6 +604,204 @@
     if (b.dataset.im === 'ulang') imbas(this.dataset.kunci);
     else tutupImbas();
   });
+
+  /* ---------- Giliran luar talian ---------- */
+  var LS_Q = 'kunci_tertunda';
+  var sedangHantar = false;
+  function idBaru(){
+    try { return crypto.randomUUID(); } catch(e){ return Date.now().toString(36) + Math.random().toString(36).slice(2, 12); }
+  }
+  function getGiliran(){ try { var q = JSON.parse(lsGet(LS_Q)); return Array.isArray(q) ? q : []; } catch(e){ return []; } }
+  function setGiliran(q){ lsSet(LS_Q, q.length ? JSON.stringify(q) : ''); paparTertunda(); }
+  function simpanGiliran(it){ setGiliran(getGiliran().concat([it]).slice(-50)); }
+  function paparTertunda(){
+    var n = getGiliran().length, a = $('tertunda');
+    if (!n) { a.classList.add('hidden'); return; }
+    a.innerHTML = '<i data-lucide="cloud-off" class="w-4 h-4 flex-none mt-0.5"></i><span></span>';
+    a.lastChild.textContent = n + ' imbasan disimpan di telefon, akan dihantar apabila ada sambungan.';
+    a.classList.remove('hidden');
+    icons();
+  }
+  // Hanya imbasan milik pengguna yang sedang log masuk dihantar (elak tersilap nama pada telefon kongsi)
+  async function hantarTertunda(){
+    var tok = getToken();
+    if (sedangHantar || !tok) return;
+    var uSemasa = (getUser() || {}).username || '';
+    var seterusnya = function(){ return getGiliran().filter(function(x){ return x.u === uSemasa; })[0]; };
+    if (!seterusnya()) return;
+    sedangHantar = true;
+    var berjaya = 0;
+    try {
+      for (var it = seterusnya(); it; it = seterusnya()) {
+        var j;
+        try { j = await api({ action: 'imbas', kunci: it.kunci, token: tok, idem: it.idem, masa: it.masa }); }
+        catch (e) { if (e.rangkaian) break; j = { ok: false }; } // ralat tetap: buang supaya tidak menyekat giliran
+        if (j.auth === false) break;
+        setGiliran(getGiliran().filter(function(x){ return x.idem !== it.idem; }));
+        if (j.ok) berjaya++;
+      }
+    } finally { sedangHantar = false; }
+    if (berjaya) muat();
+  }
+  window.addEventListener('online', function(){ hantarTertunda(); if (getToken()) muat(); });
+
+  /* ---------- Realtime (Supabase Broadcast): dashboard berubah serta-merta ---------- */
+  var ws = null, wsBuka = false, wsUlang = 0, wsHb = null, wsTimer = null, wsRef = 1, muatTimer = null;
+  function muatTunda(){
+    clearTimeout(muatTimer);
+    muatTimer = setTimeout(function(){ if (!document.hidden && getToken()) muat(); }, 300);
+  }
+  function realtimeMula(){
+    if (ws || !getToken() || typeof WebSocket === 'undefined') return;
+    var s;
+    try { s = new WebSocket(SUPABASE_URL.replace(/^http/, 'ws') + '/realtime/v1/websocket?apikey=' + encodeURIComponent(SUPABASE_KEY) + '&vsn=1.0.0'); }
+    catch(e){ return; }
+    ws = s;
+    s.onopen = function(){
+      wsBuka = true; wsUlang = 0;
+      s.send(JSON.stringify({ topic: 'realtime:kunci-log', event: 'phx_join', ref: '1', join_ref: '1',
+        payload: { config: { broadcast: { self: false, ack: false }, presence: { key: '' }, postgres_changes: [], private: false } } }));
+      wsHb = setInterval(function(){
+        try { s.send(JSON.stringify({ topic: 'phoenix', event: 'heartbeat', payload: {}, ref: String(++wsRef) })); } catch(e){}
+      }, 25000);
+    };
+    s.onmessage = function(ev){
+      try {
+        var m = JSON.parse(ev.data);
+        if (m.event === 'broadcast' && m.payload && m.payload.event === 'ubah') muatTunda();
+      } catch(e){}
+    };
+    s.onclose = function(){
+      clearInterval(wsHb); wsBuka = false;
+      if (ws === s) ws = null;
+      if (getToken() && !wsHenti) {
+        wsTimer = setTimeout(realtimeMula, Math.min(60000, 3000 * Math.pow(2, wsUlang++)));
+      }
+    };
+    s.onerror = function(){ try { s.close(); } catch(e){} };
+  }
+  var wsHenti = false;
+  function realtimeHenti(){
+    wsHenti = true;
+    clearTimeout(wsTimer); clearInterval(wsHb);
+    var s = ws; ws = null; wsBuka = false;
+    if (s) { try { s.close(); } catch(e){} }
+    wsHenti = false;
+  }
+
+  /* ---------- Padam rekod (Admin sahaja) ---------- */
+  function isAdmin(){ var u = getUser(); return !!u && u.peranan === 'Admin'; }
+  $('area').addEventListener('click', function(e){
+    var b = e.target.closest('[data-padam]');
+    if (!b) return;
+    if (!window.confirm('Padam rekod ini? Tindakan ini tidak boleh dibatalkan.')) return;
+    var ids = b.dataset.padam.split(',').map(Number).filter(Boolean);
+    b.disabled = true;
+    api({ action: 'padam', token: getToken(), ids: ids }).then(function(j){
+      if (j.auth === false) { logoutLocal(j.error || 'Sesi tamat. Sila log masuk semula.'); return; }
+      if (!j.ok) throw new Error(j.error || 'Gagal memadam rekod');
+      muat();
+    }).catch(function(err){ b.disabled = false; showWarn(err.message); });
+  });
+
+  /* ---------- Eksport laporan PDF ---------- */
+  function pdfMsg(t){
+    var m = $('pdfMsg');
+    if (!t) { m.classList.add('hidden'); return; }
+    m.textContent = t;
+    m.style.background = 'var(--bad-soft)'; m.style.color = 'var(--bad)';
+    m.classList.remove('hidden');
+  }
+  function hariIni(offset){
+    var d = new Date(); d.setDate(d.getDate() - (offset || 0));
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function bukaPdf(){
+    $('pdfDari').value = hariIni(6); $('pdfHingga').value = hariIni(0);
+    pdfMsg(''); $('sheetPdf').classList.remove('hidden'); icons();
+  }
+  function tutupPdf(){ $('sheetPdf').classList.add('hidden'); }
+  $('btnPdf').onclick = bukaPdf;
+  $('pdfBatal').onclick = tutupPdf;
+  $('sheetPdf').addEventListener('click', function(e){ if (e.target === this) tutupPdf(); });
+  document.querySelectorAll('.pdfChip').forEach(function(c){
+    c.onclick = function(){ $('pdfDari').value = hariIni(Number(c.dataset.pdfHari)); $('pdfHingga').value = hariIni(0); pdfMsg(''); };
+  });
+  function muatSkrip(src){
+    return new Promise(function(ok, gagal){
+      var sc = document.createElement('script');
+      sc.src = src; sc.onload = ok;
+      sc.onerror = function(){ gagal(new Error('Gagal memuatkan pustaka PDF. Semak sambungan internet.')); };
+      document.head.appendChild(sc);
+    });
+  }
+  function pdfSedia(){ var J = window.jspdf && window.jspdf.jsPDF; return !!(J && J.API && J.API.autoTable); }
+  async function pastiPdf(){ // dimuat hanya apabila perlu (tidak melambatkan halaman utama)
+    if (pdfSedia()) return;
+    if (!(window.jspdf && window.jspdf.jsPDF)) await muatSkrip('vendor/jspdf.umd.min.js');
+    await muatSkrip('vendor/jspdf.plugin.autotable.min.js');
+    if (!pdfSedia()) throw new Error('Pustaka PDF tidak dapat dimulakan.');
+  }
+  function tarikhDMY(iso){
+    var d = new Date(iso);
+    return isNaN(d) ? '-' : String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear();
+  }
+  async function janaPdf(){
+    var dari = $('pdfDari').value, hingga = $('pdfHingga').value;
+    if (!dari || !hingga) return pdfMsg('Sila pilih tarikh dari dan hingga.');
+    if (hingga < dari) return pdfMsg('Tarikh "hingga" mesti selepas tarikh "dari".');
+    var btn = $('pdfJana'), asal = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Menyediakan...'; pdfMsg('');
+    try {
+      var hasil = await Promise.all([api({ action: 'eksport', token: getToken(), dari: dari, hingga: hingga }), pastiPdf()]);
+      var j = hasil[0];
+      if (j.auth === false) { tutupPdf(); logoutLocal(j.error || 'Sesi tamat. Sila log masuk semula.'); return; }
+      if (!j.ok) throw new Error(j.error || 'Gagal menjana laporan');
+      if (!j.rows.length) throw new Error('Tiada rekod dalam tempoh ini.');
+
+      var doc = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      var u = getUser() || {};
+      doc.setFontSize(15); doc.setFont('helvetica', 'bold');
+      doc.text('Laporan Pengurusan Kunci - SMK Taman Medan', 14, 15);
+      doc.setFontSize(10); doc.setFont('helvetica', 'normal');
+      doc.text('Tempoh: ' + tarikhDMY(dari + 'T00:00:00') + ' hingga ' + tarikhDMY(hingga + 'T00:00:00') + '   |   Jumlah rekod: ' + j.jumlah +
+        (j.dipotong ? ' (dipaparkan ' + j.rows.length + ' pertama)' : ''), 14, 22);
+      doc.text('Dijana oleh: ' + (u.nama || u.username || '-') + ' pada ' + tarikhDMY(new Date().toISOString()) + ' ' + hm(new Date()), 14, 27.5);
+
+      var badan = j.rows.map(function(r, i){
+        var ruj = r.masaAmbil || r.masaPulang;
+        return [
+          i + 1, tarikhDMY(ruj), r.bilik, r.guru,
+          r.masaAmbil ? jam(r.masaAmbil, ruj) : '-',
+          r.masaPulang ? jam(r.masaPulang, ruj) : '-',
+          r.guruPulang || '-',
+          r.masaAmbil && r.masaPulang ? fmtDur(r.masaAmbil, r.masaPulang) : '-',
+          r.status
+        ];
+      });
+      doc.autoTable({
+        startY: 32,
+        head: [['Bil', 'Tarikh', 'Bilik', 'Guru (Ambil)', 'Ambil', 'Pulang', 'Guru (Pulang)', 'Tempoh', 'Status']],
+        body: badan,
+        styles: { fontSize: 8.5, cellPadding: 1.8, overflow: 'linebreak' },
+        headStyles: { fillColor: [29, 78, 216], textColor: 255 },
+        alternateRowStyles: { fillColor: [244, 247, 252] },
+        columnStyles: { 0: { cellWidth: 11, halign: 'right' }, 1: { cellWidth: 24 }, 4: { cellWidth: 26 }, 5: { cellWidth: 30 }, 7: { cellWidth: 20 }, 8: { cellWidth: 26 } }
+      });
+      var n = doc.internal.getNumberOfPages();
+      for (var pg = 1; pg <= n; pg++) {
+        doc.setPage(pg); doc.setFontSize(8); doc.setTextColor(120);
+        doc.text('Halaman ' + pg + ' / ' + n, doc.internal.pageSize.getWidth() - 14, doc.internal.pageSize.getHeight() - 7, { align: 'right' });
+      }
+      doc.save('laporan-kunci_' + dari + '_hingga_' + hingga + '.pdf');
+      tutupPdf();
+    } catch (err) {
+      pdfMsg(err.message);
+    } finally {
+      btn.disabled = false; btn.textContent = asal;
+    }
+  }
+  $('pdfJana').onclick = janaPdf;
 
   /* ---------- Render ---------- */
   function render(){
@@ -691,7 +934,11 @@
         '<div class="text-[12.5px] muted line-clamp-2 break-words" title="' + esc(r.guru) + '">' + esc(r.guru) + '</div>' +
         '<div class="text-[12px] mt-0.5 flex flex-wrap items-center gap-x-1 muted"><span class="whitespace-nowrap">Ambil ' + jam(r.masaAmbil, ruj) + '</span>' +
           (belum ? '' : '<i data-lucide="arrow-right" class="w-3 h-3 flex-none"></i><span class="whitespace-nowrap">Pulang ' + jam(r.masaPulang, ruj) + '</span>') + '</div>' +
-      '</div>' + pulang + '</div>';
+      '</div>' + pulang +
+      (isAdmin() && r.ids && r.ids.length
+        ? '<button type="button" data-padam="' + esc(r.ids.join(',')) + '" class="press w-8 h-8 rounded-xl flex items-center justify-center flex-none" style="background:var(--bad-soft);color:var(--bad)" aria-label="Padam rekod"><i data-lucide="trash-2" class="w-4 h-4"></i></button>'
+        : '') +
+      '</div>';
   }
 
   /* ---------- Tab & penapis ---------- */
@@ -720,9 +967,14 @@
   $('btnRefresh').onclick = muat;
 
   /* ---------- Auto-refresh 30 saat ---------- */
-  setInterval(function(){ if (!document.hidden && getToken()) muat(); }, 30000);
+  // Realtime menolak perubahan serta-merta; muat berkala hanya jika sambungan realtime tiada (dan sebagai jaring keselamatan 5 minit)
+  setInterval(function(){ if (!document.hidden && getToken() && !wsBuka) muat(); }, 30000);
+  setInterval(function(){ if (!document.hidden && getToken()) muat(); }, 300000);
   setInterval(function(){ if (!document.hidden) render(); }, 60000);
-  document.addEventListener('visibilitychange', function(){ if (!document.hidden && getToken()) muat(); });
+  document.addEventListener('visibilitychange', function(){
+    if (document.hidden || !getToken()) return;
+    realtimeMula(); muat();
+  });
 
   /* ---------- Mula ---------- */
   document.querySelectorAll('.tagline').forEach(function(el){ el.textContent = TAGLINE; });
@@ -732,6 +984,8 @@
   }
   styleTabs(); icons();
   render();
+  paparTertunda();
+  realtimeMula();
   // Dibuka dari tag NFC: buang ?kunci= dari URL (muat semula tidak merekod lagi), kemudian rekod
   var kunciUrl = '';
   try { kunciUrl = (new URLSearchParams(location.search).get('kunci') || '').trim().slice(0, 80); } catch(e){}

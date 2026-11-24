@@ -443,7 +443,8 @@ describe('Imbasan NFC melalui PWA (?kunci=ID)', () => {
     assert.match(teks(), /Merekod kunci/);
     assert.match(teks(), /Bilik A/, 'nama bilik daripada cache sebelum pelayan menjawab');
     await p.wait(120);
-    assert.deepEqual(p.calls[0].body, { action: 'imbas', kunci: 'A', token: 'tok' });
+    assert.match(p.calls[0].body.idem, /^[0-9a-z-]{8,}$/, 'idem dihantar');
+    assert.deepEqual({ ...p.calls[0].body, idem: undefined }, { action: 'imbas', kunci: 'A', token: 'tok', idem: undefined });
     assert.deepEqual(p.calls[1].body, { action: 'getDashboard', token: 'tok' });
     assert.equal(p.calls.filter((c) => c.body.action === 'imbas').length, 1);
     assert.match(teks(), /Kunci DIAMBIL/);
@@ -476,7 +477,7 @@ describe('Imbasan NFC melalui PWA (?kunci=ID)', () => {
     p.submitAuth();
     await p.wait(150);
     assert.equal(p.calls[0].body.action, 'login');
-    assert.deepEqual(p.calls[1].body, { action: 'imbas', kunci: 'A', token: 't9' });
+    assert.deepEqual({ ...p.calls[1].body, idem: undefined }, { action: 'imbas', kunci: 'A', token: 't9', idem: undefined });
     assert.match(teks(), /Kunci DIAMBIL/);
   });
 
@@ -498,7 +499,7 @@ describe('Imbasan NFC melalui PWA (?kunci=ID)', () => {
     p.$('aPass').value = 'rahsia123';
     p.submitAuth();
     await p.wait(150);
-    assert.deepEqual(p.calls.at(-2).body, { action: 'imbas', kunci: 'A', token: 'baru' });
+    assert.deepEqual({ ...p.calls.at(-2).body, idem: undefined }, { action: 'imbas', kunci: 'A', token: 'baru', idem: undefined });
     assert.match(teks(), /Kunci DIAMBIL/);
   });
 

@@ -17,6 +17,8 @@ const HTML = fs.readFileSync(path.join(__dirname, '..', '..', 'index.html'), 'ut
 function loadPage(o = {}) {
   const calls = [];
   const alerts = [];
+  const sockets = [];
+  const confirms = [];
   const dom = new JSDOM(HTML, {
     url: o.url || 'https://contoh.test/',
     runScripts: 'dangerously',
@@ -24,6 +26,15 @@ function loadPage(o = {}) {
     beforeParse(w) {
       Object.entries(o.ls || {}).forEach(([k, v]) => w.localStorage.setItem(k, v));
       w.alert = (m) => alerts.push(m);
+      w.confirm = (m) => { confirms.push(m); return o.confirm !== false; };
+      // WebSocket palsu: tiada sambungan sebenar; ujian mengawal onopen/onmessage/onclose
+      w.WebSocket = class {
+        constructor(url) { this.url = url; this.sent = []; this.closed = false; sockets.push(this); }
+        send(m) { this.sent.push(JSON.parse(m)); }
+        close() { this.closed = true; if (this.onclose) this.onclose(); }
+        _buka() { if (this.onopen) this.onopen(); }
+        _mesej(obj) { if (this.onmessage) this.onmessage({ data: JSON.stringify(obj) }); }
+      };
       w.scrollTo = () => {};
       w.fetch = async (url, init) => {
         const body = init && init.body ? JSON.parse(init.body).b : null; // badan RPC: {b: {action, ...}}
@@ -41,7 +52,7 @@ function loadPage(o = {}) {
   const hidden = (id) => $(id).classList.contains('hidden');
   const submitAuth = () => $('formAuth').dispatchEvent(new w.Event('submit', { cancelable: true, bubbles: true }));
   const close = () => w.close();
-  return { dom, w, $, calls, alerts, wait, hidden, submitAuth, close };
+  return { dom, w, $, calls, alerts, sockets, confirms, wait, hidden, submitAuth, close };
 }
 
 module.exports = { loadPage, SUPABASE_URL, SUPABASE_KEY };
