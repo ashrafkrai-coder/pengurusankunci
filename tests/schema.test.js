@@ -180,4 +180,122 @@ describe('Skema Supabase', () => {
     const r = (await db.query('select * from public.isyarat_uji')).rows;
     assert.deepEqual(r.map((x) => [x.topik, x.peristiwa, x.awam]), [['kunci-log', 'ubah', true]]);
   });
+
+  describe('Admin: urus bilik', () => {
+    let admin, biasa;
+    before(async () => {
+      admin = await daftar('adminbilik');
+      biasa = await daftar('biasabilik');
+      await db.exec("update pengguna set peranan = 'Admin' where username = 'adminbilik'");
+    });
+    const bilik = (b) => call('api_admin_bilik', b);
+
+    test('hanya Admin; sesi tidak sah ditolak', async () => {
+      assert.match((await bilik({ token: biasa, op: 'tambah', id: 'X1', nama: 'X' })).error, /Admin/);
+      assert.equal((await bilik({ token: 'x', op: 'tambah', id: 'X1', nama: 'X' })).auth, false);
+    });
+
+    test('tambah: ID dinormalkan, pengesahan, pendua', async () => {
+      const r = await bilik({ token: admin, op: 'tambah', id: ' bilik-baharu ', nama: ' Bilik Baharu ' });
+      assert.ok(r.ok);
+      assert.deepEqual(r.bilik.find((x) => x.idKunci === 'BILIK-BAHARU'), { idKunci: 'BILIK-BAHARU', nama: 'Bilik Baharu' });
+      assert.match((await bilik({ token: admin, op: 'tambah', id: 'BILIK-BAHARU', nama: 'Lain' })).error, /sudah wujud/);
+      assert.match((await bilik({ token: admin, op: 'tambah', id: 'a', nama: 'X' })).error, /ID kunci/);
+      assert.match((await bilik({ token: admin, op: 'tambah', id: 'ada ruang', nama: 'X' })).error, /ID kunci/);
+      assert.match((await bilik({ token: admin, op: 'tambah', id: 'OK-1', nama: '' })).error, /Nama bilik/);
+    });
+
+    test('ID baharu boleh diimbas', async () => {
+      const r = await call('api_imbas', { kunci: 'bilik-baharu', token: biasa });
+      assert.equal(r.bilik, 'Bilik Baharu');
+    });
+
+    test('namakan: nama berubah, ID kekal; bilik tiada ditolak', async () => {
+      const r = await bilik({ token: admin, op: 'namakan', id: 'BILIK-BAHARU', nama: 'Bilik Dinamakan Semula' });
+      assert.equal(r.bilik.find((x) => x.idKunci === 'BILIK-BAHARU').nama, 'Bilik Dinamakan Semula');
+      assert.match((await bilik({ token: admin, op: 'namakan', id: 'TIADA', nama: 'X' })).error, /tidak dijumpai/);
+    });
+
+    test('padam: ditolak jika kunci sedang diambil; berjaya selepas dipulangkan', async () => {
+      assert.match((await bilik({ token: admin, op: 'padam', id: 'BILIK-BAHARU' })).error, /sedang diambil/);
+      await db.exec("update log_imbas set masa = masa - interval '5 minutes' where id_kunci = 'BILIK-BAHARU'");
+      assert.equal((await call('api_imbas', { kunci: 'BILIK-BAHARU', token: biasa })).tindakan, 'Pulang');
+      const r = await bilik({ token: admin, op: 'padam', id: 'BILIK-BAHARU' });
+      assert.ok(r.ok);
+      assert.equal(r.bilik.some((x) => x.idKunci === 'BILIK-BAHARU'), false);
+      assert.match((await bilik({ token: admin, op: 'padam', id: 'BILIK-BAHARU' })).error, /tidak dijumpai/);
+      assert.match((await bilik({ token: admin, op: 'lain', id: 'X' })).error, /tidak dikenali/);
+    });
+  });
+
+  describe('Admin: urus akaun guru', () => {
+    let admin, biasa, adminTok2;
+    const urus = (b) => call('api_admin_pengguna', { token: admin, ...b });
+    before(async () => {
+      admin = await daftar('adminguru');
+      await db.exec("update pengguna set peranan = 'Admin' where username = 'adminguru'");
+      biasa = await daftar('guru.biasa');
+    });
+
+    test('senarai: hanya Admin, tiada hash/kata laluan', async () => {
+      assert.match((await call('api_admin_pengguna_senarai', { token: biasa })).error, /Admin/);
+      assert.equal((await call('api_admin_pengguna_senarai', { token: 'x' })).auth, false);
+      const r = await call('api_admin_pengguna_senarai', { token: admin });
+      assert.equal(r.saya, 'adminguru');
+      const g = r.pengguna.find((x) => x.username === 'guru.biasa');
+      assert.deepEqual(Object.keys(g).sort(), ['daftar', 'nama', 'peranan', 'status', 'username']);
+      assert.ok(!JSON.stringify(r).includes('$2'), 'tiada hash bcrypt');
+    });
+
+    test('pengguna biasa tidak boleh urus akaun', async () => {
+      assert.match((await call('api_admin_pengguna', { token: biasa, op: 'status', sasaran: 'adminguru', nilai: 'Digantung' })).error, /Admin/);
+    });
+
+    test('sekat: sesi sasaran terus ditolak & log masuk ditolak; aktifkan semula', async () => {
+      const r = await urus({ op: 'status', sasaran: 'guru.biasa', nilai: 'Digantung' });
+      assert.equal(r.pengguna.find((x) => x.username === 'guru.biasa').status, 'Digantung');
+      assert.equal((await call('api_dashboard', { token: biasa })).auth, false);
+      assert.match((await call('api_login', { username: 'guru.biasa', password: 'rahsia123' })).error, /disekat/);
+      await urus({ op: 'status', sasaran: 'guru.biasa', nilai: 'Aktif' });
+      const l = await call('api_login', { username: 'guru.biasa', password: 'rahsia123' });
+      assert.ok(l.ok);
+      biasa = l.token; // sesi lama dibuang semasa disekat
+    });
+
+    test('tidak boleh sekat/turunkan diri sendiri; nilai tidak sah ditolak', async () => {
+      assert.match((await urus({ op: 'status', sasaran: 'adminguru', nilai: 'Digantung' })).error, /sendiri/);
+      assert.match((await urus({ op: 'peranan', sasaran: 'adminguru', nilai: 'Pentadbir' })).error, /sendiri/);
+      assert.match((await urus({ op: 'status', sasaran: 'guru.biasa', nilai: 'Rosak' })).error, /Status tidak sah/);
+      assert.match((await urus({ op: 'peranan', sasaran: 'guru.biasa', nilai: 'Raja' })).error, /Peranan tidak sah/);
+      assert.match((await urus({ op: 'status', sasaran: 'tiada.orang', nilai: 'Aktif' })).error, /tidak dijumpai/);
+      assert.match((await urus({ op: 'lain', sasaran: 'guru.biasa' })).error, /tidak dikenali/);
+    });
+
+    test('peranan: jadikan Admin kemudian biasa', async () => {
+      let r = await urus({ op: 'peranan', sasaran: 'guru.biasa', nilai: 'Admin' });
+      assert.equal(r.pengguna.find((x) => x.username === 'guru.biasa').peranan, 'Admin');
+      assert.equal((await call('api_dashboard', { token: biasa })).pengguna.peranan, 'Admin');
+      r = await urus({ op: 'peranan', sasaran: 'guru.biasa', nilai: 'Pentadbir' });
+      assert.equal(r.pengguna.find((x) => x.username === 'guru.biasa').peranan, 'Pentadbir');
+    });
+
+    test('kata laluan: pengesahan, log keluar peranti lama, kata laluan lama tidak sah, kunci dibuka', async () => {
+      assert.match((await urus({ op: 'katalaluan', sasaran: 'guru.biasa', nilai: 'pendek' })).error, /8 aksara/);
+      for (let i = 0; i < 5; i++) await call('api_login', { username: 'guru.biasa', password: 'salah' });
+      assert.match((await call('api_login', { username: 'guru.biasa', password: 'rahsia123' })).error, /Terlalu banyak/);
+      const sesiLama = (await call('api_login', { username: 'guru.biasa', password: 'x' })); // masih terkunci
+      assert.equal(sesiLama.ok, false);
+      assert.ok((await urus({ op: 'katalaluan', sasaran: 'guru.biasa', nilai: 'KataBaharu99' })).ok);
+      assert.equal((await call('api_dashboard', { token: biasa })).auth, false, 'sesi lama dibuang');
+      assert.match((await call('api_login', { username: 'guru.biasa', password: 'rahsia123' })).error, /salah/);
+      const l = await call('api_login', { username: 'guru.biasa', password: 'KataBaharu99' });
+      assert.ok(l.ok, 'kunci cubaan gagal dibuka & kata laluan baharu berfungsi');
+    });
+
+    test('tukar kata laluan sendiri: sesi Admin semasa kekal', async () => {
+      assert.ok((await urus({ op: 'katalaluan', sasaran: 'adminguru', nilai: 'AdminBaru123' })).ok);
+      assert.equal((await call('api_dashboard', { token: admin })).ok, true);
+      assert.ok((await call('api_login', { username: 'adminguru', password: 'AdminBaru123' })).ok);
+    });
+  });
 });

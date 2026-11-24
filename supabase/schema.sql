@@ -397,6 +397,121 @@ grant execute on function public.api_daftar(jsonb), public.api_login(jsonb), pub
                           public.api_eksport(jsonb), public.api_ping(jsonb) to anon, authenticated;
 
 -- ---------------------------------------------------------------------
+--  ADMIN: urus bilik & akaun guru (semua memerlukan peranan 'Admin')
+-- ---------------------------------------------------------------------
+create or replace function app.senarai_bilik() returns jsonb language sql stable as $$
+  select coalesce(jsonb_agg(jsonb_build_object('idKunci', id_kunci, 'nama', nama_bilik) order by dicipta, id_kunci), '[]'::jsonb)
+  from public.bilik
+$$;
+
+create or replace function app.senarai_pengguna() returns jsonb language sql stable as $$
+  select coalesce(jsonb_agg(jsonb_build_object('username', username, 'nama', nama_penuh, 'peranan', peranan,
+                                               'status', status, 'daftar', app.iso(tarikh_daftar))
+                            order by tarikh_daftar desc, username), '[]'::jsonb)
+  from (select * from public.pengguna order by tarikh_daftar desc, username limit 1000) x
+$$;
+revoke all on function app.senarai_bilik(), app.senarai_pengguna() from public, anon, authenticated;
+
+-- op: 'tambah' (id, nama) | 'namakan' (id, nama) | 'padam' (id). ID kunci tidak boleh diubah (tag NFC merujuknya).
+create or replace function public.api_admin_bilik(b jsonb) returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+declare
+  u   record;
+  op  text := b->>'op';
+  kid text := upper(trim(coalesce(b->>'id', '')));
+  nm  text := trim(coalesce(b->>'nama', ''));
+  n   int;
+begin
+  select * into u from app.sesi_pengguna(b->>'token');
+  if not found then
+    return jsonb_build_object('ok', false, 'auth', false, 'error', 'Sesi tamat atau tidak sah. Sila log masuk semula.');
+  end if;
+  if u.peranan <> 'Admin' then return app.ralat('Hanya Admin boleh mengurus bilik.'); end if;
+
+  if op = 'tambah' then
+    if kid !~ '^[A-Z0-9][A-Z0-9-]{1,59}$' then return app.ralat('ID kunci mesti 2-60 aksara: huruf, nombor dan sempang (-).'); end if;
+    if nm = '' or length(nm) > 80 then return app.ralat('Nama bilik diperlukan (maksimum 80 aksara).'); end if;
+    begin
+      insert into public.bilik (id_kunci, nama_bilik) values (kid, nm);
+    exception when unique_violation then
+      return app.ralat('ID kunci "' || kid || '" sudah wujud.');
+    end;
+  elsif op = 'namakan' then
+    if nm = '' or length(nm) > 80 then return app.ralat('Nama bilik diperlukan (maksimum 80 aksara).'); end if;
+    update public.bilik set nama_bilik = nm where id_kunci = kid;
+    get diagnostics n = row_count;
+    if n = 0 then return app.ralat('Bilik tidak dijumpai.'); end if;
+  elsif op = 'padam' then
+    if exists (select 1 from (select tindakan from public.log_imbas where id_kunci = kid order by id desc limit 1) x
+               where x.tindakan = 'Ambil') then
+      return app.ralat('Kunci ini sedang diambil. Pulangkan dahulu sebelum memadam bilik.');
+    end if;
+    delete from public.bilik where id_kunci = kid;
+    get diagnostics n = row_count;
+    if n = 0 then return app.ralat('Bilik tidak dijumpai.'); end if;
+  else
+    return app.ralat('Tindakan tidak dikenali.');
+  end if;
+  return jsonb_build_object('ok', true, 'bilik', app.senarai_bilik());
+end $$;
+
+create or replace function public.api_admin_pengguna_senarai(b jsonb) returns jsonb
+language plpgsql stable security definer set search_path = public, extensions as $$
+declare
+  u record;
+begin
+  select * into u from app.sesi_pengguna(b->>'token');
+  if not found then
+    return jsonb_build_object('ok', false, 'auth', false, 'error', 'Sesi tamat atau tidak sah. Sila log masuk semula.');
+  end if;
+  if u.peranan <> 'Admin' then return app.ralat('Hanya Admin boleh mengurus akaun.'); end if;
+  return jsonb_build_object('ok', true, 'saya', u.username, 'pengguna', app.senarai_pengguna());
+end $$;
+
+-- op: 'status' (nilai: Aktif|Digantung) | 'peranan' (nilai: Admin|Pentadbir) | 'katalaluan' (nilai: kata laluan baharu)
+-- Admin tidak boleh menyekat atau menurunkan akaunnya sendiri (sentiasa ada sekurang-kurangnya seorang Admin).
+create or replace function public.api_admin_pengguna(b jsonb) returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+declare
+  u   record;
+  op  text := b->>'op';
+  tgt text := lower(trim(coalesce(b->>'sasaran', '')));
+  v   text := coalesce(b->>'nilai', '');
+begin
+  select * into u from app.sesi_pengguna(b->>'token');
+  if not found then
+    return jsonb_build_object('ok', false, 'auth', false, 'error', 'Sesi tamat atau tidak sah. Sila log masuk semula.');
+  end if;
+  if u.peranan <> 'Admin' then return app.ralat('Hanya Admin boleh mengurus akaun.'); end if;
+  if not exists (select 1 from public.pengguna where username = tgt) then return app.ralat('Pengguna tidak dijumpai.'); end if;
+
+  if op = 'status' then
+    if v not in ('Aktif', 'Digantung') then return app.ralat('Status tidak sah.'); end if;
+    if tgt = u.username then return app.ralat('Anda tidak boleh menyekat akaun sendiri.'); end if;
+    update public.pengguna set status = v where username = tgt;
+    if v <> 'Aktif' then delete from public.sesi where username = tgt; end if;
+  elsif op = 'peranan' then
+    if v not in ('Admin', 'Pentadbir') then return app.ralat('Peranan tidak sah.'); end if;
+    if tgt = u.username then return app.ralat('Anda tidak boleh menukar peranan sendiri.'); end if;
+    update public.pengguna set peranan = v where username = tgt;
+  elsif op = 'katalaluan' then
+    if length(v) < 8 then return app.ralat('Kata laluan mesti sekurang-kurangnya 8 aksara.'); end if;
+    if octet_length(v) > 72 then return app.ralat('Kata laluan terlalu panjang (maksimum 72 aksara).'); end if;
+    update public.pengguna set hash = crypt(v, gen_salt('bf', 8)) where username = tgt;
+    -- Log keluar semua peranti guru itu (kecuali sesi Admin ini jika menukar kata laluan sendiri) & buka kunci cubaan gagal
+    delete from public.sesi where username = tgt
+      and token_hash <> encode(extensions.digest(coalesce(b->>'token', ''), 'sha256'), 'hex');
+    delete from public.gagal_login where username = tgt;
+  else
+    return app.ralat('Tindakan tidak dikenali.');
+  end if;
+  return jsonb_build_object('ok', true, 'saya', u.username, 'pengguna', app.senarai_pengguna());
+end $$;
+
+revoke all on function public.api_admin_bilik(jsonb), public.api_admin_pengguna_senarai(jsonb), public.api_admin_pengguna(jsonb) from public;
+grant execute on function public.api_admin_bilik(jsonb), public.api_admin_pengguna_senarai(jsonb), public.api_admin_pengguna(jsonb) to anon, authenticated;
+
+-- ---------------------------------------------------------------------
 --  REALTIME: dashboard dikemas kini serta-merta apabila ada imbasan baharu / rekod dipadam.
 --  Hanya isyarat kosong dihantar melalui saluran awam "kunci-log" (tiada data peribadi);
 --  PWA kemudian memanggil api_dashboard dengan tokennya. Jika Realtime tidak tersedia,

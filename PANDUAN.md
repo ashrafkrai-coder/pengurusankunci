@@ -41,6 +41,8 @@ Hos di HTTPS (Vercel dsb). Pasang: *Add to Home Screen* (telefon) atau *Install 
   update public.pengguna set peranan = 'Admin' where username = 'nama.pengguna';
   ```
 
+- **Urus bilik (Admin):** Akaun > **Urus Bilik**. Tambah bilik (ID dijana daripada nama, boleh diubah), namakan semula, atau padam. ID kunci tidak boleh diubah kerana tag NFC merujuknya. Bilik yang kuncinya sedang diambil tidak boleh dipadam; sejarah lama kekal selepas bilik dipadam.
+- **Urus akaun guru (Admin):** Akaun > **Urus Akaun Guru**. Cari guru, **Sekat/Aktifkan** akaun, **Jadikan Admin/biasa**, atau tetapkan **kata laluan baharu** (guru dilog keluar daripada semua peranti dan kunci 15 minit dibuka; beritahu guru kata laluan itu). Admin tidak boleh menyekat atau menurunkan akaunnya sendiri, jadi sentiasa ada sekurang-kurangnya seorang Admin.
 - **Keepalive:** `.github/workflows/keepalive.yml` memanggil `api_ping` setiap 3 hari supaya projek percuma tidak dijeda. Jika repo tiada aktiviti 60 hari, GitHub menghentikan jadual itu; tekan *Enable workflow* di tab Actions.
 
 ## Akaun
