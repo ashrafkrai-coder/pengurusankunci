@@ -1,7 +1,7 @@
 // Ujian UI dashboard (index.html) dalam jsdom.
 const { test, describe, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
-const { loadPage, DEFAULT_URL } = require('./helpers/page');
+const { loadPage, SUPABASE_URL, SUPABASE_KEY } = require('./helpers/page');
 
 const DASH = {
   ok: true,
@@ -46,14 +46,6 @@ describe('Tanpa log masuk', () => {
     assert.match(img.getAttribute('alt'), /SMK Taman Medan/);
   });
 
-  test('URL lalai diisi dalam Tetapan', async () => {
-    p = loadPage();
-    p.$('authTetapan').click();
-    assert.equal(p.hidden('modal'), false);
-    assert.equal(p.$('inpUrl').value, DEFAULT_URL);
-    assert.match(DEFAULT_URL, /^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/);
-  });
-
   test('cache data lama tidak dipaparkan tanpa token', async () => {
     p = loadPage({ ls: { kunci_cache: JSON.stringify(DASH) } });
     await p.wait();
@@ -73,9 +65,7 @@ describe('Log masuk', () => {
     p.submitAuth();
     await p.wait(120);
     assert.deepEqual(p.calls[0].body, { action: 'login', username: 'ali', password: 'rahsia123', ingat: true });
-    assert.equal(p.calls[0].url, DEFAULT_URL);
-    assert.equal(p.calls[0].init.method, 'POST');
-    assert.match(p.calls[0].init.headers['Content-Type'], /^text\/plain/);
+assert.equal(p.calls[0].url, SUPABASE_URL + '/rest/v1/rpc/api_login');    assert.equal(p.calls[0].init.method, 'POST');    assert.equal(p.calls[0].init.headers['Content-Type'], 'application/json');    assert.equal(p.calls[0].init.headers.apikey, SUPABASE_KEY);    assert.equal(p.calls[0].init.headers.Authorization, 'Bearer ' + SUPABASE_KEY);    assert.equal(p.calls[1].url, SUPABASE_URL + '/rest/v1/rpc/api_dashboard');
     assert.deepEqual(p.calls[1].body, { action: 'getDashboard', token: 'tok123' });
     assert.equal(p.w.localStorage.getItem('kunci_token'), 'tok123');
     assert.equal(p.hidden('authScreen'), true);
@@ -142,7 +132,7 @@ describe('Log masuk', () => {
     assert.match(p.$('authMsg').textContent, /Sila isi/);
   });
 
-  test('respons bukan JSON (cth halaman log masuk Google) diberi mesej jelas', async () => {
+  test('respons bukan JSON (cth halaman ralat) diberi mesej jelas', async () => {
     p = loadPage();
     p.w.fetch = async () => ({ ok: true, status: 200, text: async () => '<html>Sign in</html>' });
     p.$('aUser').value = 'ali';
@@ -369,29 +359,6 @@ describe('Dashboard (sudah log masuk)', () => {
     assert.deepEqual(p.calls.at(-1).body, { action: 'logout', token: 'tok' });
     assert.equal(p.w.localStorage.getItem('kunci_token'), null);
     assert.equal(p.hidden('authScreen'), false);
-  });
-
-  test('Tetapan: URL tidak sah ditolak; URL sah disimpan & digunakan', async () => {
-    p = loadPage({ ls: login, api: () => DASH });
-    await p.wait(120);
-    p.$('btnTetapan').click();
-    p.$('inpUrl').value = 'https://jahat.com/exec';
-    p.$('btnSimpan').click();
-    assert.equal(p.alerts.length, 1);
-    assert.equal(p.w.localStorage.getItem('kunci_gas_url'), null);
-
-    p.$('inpUrl').value = 'https://script.google.com/macros/s/LAIN/exec';
-    p.$('btnSimpan').click();
-    await p.wait(120);
-    assert.equal(p.w.localStorage.getItem('kunci_gas_url'), 'https://script.google.com/macros/s/LAIN/exec');
-    assert.equal(p.calls.at(-1).url, 'https://script.google.com/macros/s/LAIN/exec');
-
-    p.$('btnTetapan').click();
-    p.$('inpUrl').value = '';
-    p.$('btnSimpan').click();
-    assert.equal(p.w.localStorage.getItem('kunci_gas_url'), null, 'kosong = kembali ke URL lalai');
-    await p.wait(120);
-    assert.equal(p.calls.at(-1).url, DEFAULT_URL);
   });
 
   test('tab Log: penapis status & carian', async () => {

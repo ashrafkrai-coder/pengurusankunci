@@ -1,7 +1,7 @@
 {
   "name": "pengurusankunci",
   "private": true,
-  "description": "Sistem Pengurusan Kunci Sekolah (NFC) - PWA + Google Apps Script",
+  "description": "Sistem Pengurusan Kunci Sekolah (NFC) - PWA + Supabase",
   "scripts": {
     "build": "npm run build:css && npm run build:vendor && npm run build:icon",
     "build:css": "tailwindcss -i src/tailwind.css -o tailwind.css --minify",

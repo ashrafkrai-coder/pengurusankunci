@@ -3,8 +3,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { JSDOM } = require('jsdom');
 
-const HTML = fs.readFileSync(path.join(__dirname, '..', '..', 'index.html'), 'utf8');
-const DEFAULT_URL = /var DEFAULT_URL = '([^']+)'/.exec(HTML)[1];
+const SUPABASE_URL = 'https://ckbribtplsmipkrlphgj.supabase.co';
+const SUPABASE_KEY = 'kunci-ujian';
+// Kunci sebenar ditetapkan dalam index.html; ujian guna kunci palsu
+const HTML = fs.readFileSync(path.join(__dirname, '..', '..', 'index.html'), 'utf8')
+  .replace(/var SUPABASE_KEY = '[^']*';/, "var SUPABASE_KEY = '" + SUPABASE_KEY + "';");
 
 /**
  * @param {object} o
@@ -23,7 +26,7 @@ function loadPage(o = {}) {
       w.alert = (m) => alerts.push(m);
       w.scrollTo = () => {};
       w.fetch = async (url, init) => {
-        const body = init && init.body ? JSON.parse(init.body) : null;
+        const body = init && init.body ? JSON.parse(init.body).b : null; // badan RPC: {b: {action, ...}}
         calls.push({ url, init, body });
         const r = o.api ? await o.api(body, url) : { ok: false, error: 'tiada api' };
         return { ok: true, status: 200, text: async () => JSON.stringify(r) };
@@ -41,4 +44,4 @@ function loadPage(o = {}) {
   return { dom, w, $, calls, alerts, wait, hidden, submitAuth, close };
 }
 
-module.exports = { loadPage, DEFAULT_URL };
+module.exports = { loadPage, SUPABASE_URL, SUPABASE_KEY };

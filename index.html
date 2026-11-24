@@ -185,9 +185,6 @@
       </div>
     </div>
     <div class="space-y-2">
-      <button id="btnTetapan" class="press w-full h-14 rounded-2xl soft px-4 flex items-center gap-3 text-[15px] font-semibold">
-        <i data-lucide="settings-2" class="w-5 h-5 muted"></i>Tetapan URL Web App<i data-lucide="chevron-right" class="w-4 h-4 muted ml-auto"></i>
-      </button>
       <button id="btnKeluar" class="press w-full h-14 rounded-2xl px-4 flex items-center gap-3 text-[15px] font-semibold" style="background:var(--bad-soft);color:var(--bad)">
         <i data-lucide="log-out" class="w-5 h-5"></i>Log Keluar
       </button>
@@ -261,30 +258,17 @@
         <button id="btnAuth" type="submit" class="press w-full h-12 rounded-2xl btn-on text-[16px] font-bold disabled:opacity-60">Log Masuk</button>
       </form>
     </div>
-    <button id="authTetapan" type="button" class="mt-5 mx-auto flex items-center gap-1.5 text-[13px] muted"><i data-lucide="settings-2" class="w-4 h-4"></i>Tetapan URL</button>
     <p class="tagline text-center text-[11px] muted mt-6 opacity-80"></p>
-  </div>
-</div>
-
-<!-- ================= Tetapan URL ================= -->
-<div id="modal" class="hidden fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center">
-  <div class="sheet-in w-full sm:max-w-md bg-white rounded-t-[28px] sm:rounded-[28px] p-5" style="padding-bottom:max(env(safe-area-inset-bottom),20px)">
-    <div class="w-10 h-1.5 rounded-full mx-auto mb-4 sm:hidden" style="background:var(--line)"></div>
-    <h2 class="font-bold text-[18px] mb-1">Tetapan</h2>
-    <p class="text-[13px] muted mb-4">URL Web App Google Apps Script (berakhir dengan <code>/exec</code>). Kosongkan untuk guna URL lalai.</p>
-    <input id="inpUrl" type="url" placeholder="https://script.google.com/macros/s/.../exec" class="fld w-full h-12 px-4 rounded-2xl text-[13px] mb-4">
-    <div class="grid grid-cols-2 gap-2">
-      <button id="btnBatal" class="press h-12 rounded-2xl soft font-semibold">Batal</button>
-      <button id="btnSimpan" class="press h-12 rounded-2xl btn-on font-semibold">Simpan</button>
-    </div>
   </div>
 </div>
 
 <script>
 (function(){
-  var LS_URL = 'kunci_gas_url', LS_DATA = 'kunci_cache', LS_TOKEN = 'kunci_token', LS_USER = 'kunci_user';
+  var LS_DATA = 'kunci_cache', LS_TOKEN = 'kunci_token', LS_USER = 'kunci_user';
   var LS_INGAT = 'kunci_ingat_user'; // nama pengguna sahaja (kata laluan TIDAK disimpan)
-  var DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbzXBOdUa9cS64xzGHBK2HOHY2PlPtXih-mmewoHMGL4eTJJNL2TDjoEgD5dzhqebcpX/exec';
+  // Supabase: URL projek & kunci publishable/anon (selamat didedahkan; jadual dilindungi RLS, lihat supabase/schema.sql)
+  var SUPABASE_URL = 'https://ckbribtplsmipkrlphgj.supabase.co';
+  var SUPABASE_KEY = 'sb_publishable_0Xq6i4f-XP0GsA9cMxAHHg_efGmZxHK';
   var KOSONG = { bilik: [], log: [], dijana: '' };
   var VERSI = '1.0';
   var TAGLINE = 'Developed & managed by ustazashraf · v' + VERSI;
@@ -305,17 +289,24 @@
   function icons(){ if (window.lucide) lucide.createIcons(); }
   function lsGet(k){ try { return localStorage.getItem(k) || ''; } catch(e){ return ''; } }
   function lsSet(k, v){ try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch(e){} }
-  function getUrl(){ return lsGet(LS_URL) || DEFAULT_URL; }
   function getToken(){ return lsGet(LS_TOKEN); }
   function getUser(){ try { return JSON.parse(lsGet(LS_USER)) || null; } catch(e){ return null; } }
 
-  /* ---------- Panggilan API (POST text/plain = tiada CORS preflight) ---------- */
+  /* ---------- Panggilan API: fungsi RPC Supabase (satu panggilan = satu tindakan) ---------- */
+  var RPC = { daftar: 'api_daftar', login: 'api_login', logout: 'api_logout', getDashboard: 'api_dashboard', imbas: 'api_imbas' };
   function api(body){
-    return fetch(getUrl(), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) })
+    var fn = RPC[body.action];
+    if (!fn) return Promise.reject(new Error('Tindakan tidak dikenali'));
+    if (!SUPABASE_KEY || SUPABASE_KEY.indexOf('ISI_') === 0) return Promise.reject(new Error('Kunci Supabase belum ditetapkan dalam index.html'));
+    return fetch(SUPABASE_URL + '/rest/v1/rpc/' + fn, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY },
+      body: JSON.stringify({ b: body })
+    })
       .then(function(res){ if (!res.ok) throw new Error('HTTP ' + res.status); return res.text(); })
       .then(function(t){
         try { return JSON.parse(t); }
-        catch(e){ throw new Error('Respons pelayan bukan JSON. Pastikan Code.gs terkini telah di-deploy (akses: Anyone)'); }
+        catch(e){ throw new Error('Respons pelayan bukan JSON. Pastikan supabase/schema.sql telah dijalankan'); }
       });
   }
 
@@ -431,7 +422,6 @@
     showAuth(msg, ok);
   }
   document.querySelectorAll('.authTab').forEach(function(b){ b.onclick = function(){ setAuthMode(b.dataset.auth); }; });
-  $('authTetapan').onclick = function(){ openModal(); };
   $('lihatPass').onclick = function(){
     var t = $('aPass').type === 'password' ? 'text' : 'password';
     $('aPass').type = t; $('aPass2').type = t;
@@ -501,7 +491,7 @@
   };
 
   /* ---------- Imbasan NFC: tag menghala ke laman ini dengan ?kunci=ID ---------- */
-  // Satu panggilan API sahaja (tiada halaman Apps Script) = jauh lebih pantas.
+  // Satu panggilan API sahaja = jauh lebih pantas.
   var kunciTertunda = '';
   function namaBilik(k){
     var K = String(k).trim().toUpperCase();
@@ -727,19 +717,6 @@
   $('resetFilter').onclick = function(){ $('cari').value=''; $('fTarikh').value=''; stAktif=''; styleTabs(); semulaLog(); };
   $('muatLagi').onclick = function(){ logHad += LOG_SAIZ; renderLog(); };
 
-  /* ---------- Tetapan ---------- */
-  function openModal(){ $('inpUrl').value = getUrl(); tutupAkaun(); $('modal').classList.remove('hidden'); }
-  function closeModal(){ $('modal').classList.add('hidden'); }
-  $('btnTetapan').onclick = openModal;
-  $('btnBatal').onclick = closeModal;
-  $('modal').addEventListener('click', function(e){ if (e.target === this) closeModal(); });
-  $('btnSimpan').onclick = function(){
-    var v = $('inpUrl').value.trim();
-    if (v && !/^https:\/\/script\.google\.com\/.+/.test(v)) { alert('URL mesti bermula dengan https://script.google.com/'); return; }
-    lsSet(LS_URL, v === DEFAULT_URL ? '' : v); // kosong = guna URL lalai
-    closeModal();
-    if (getToken()) muat();
-  };
   $('btnRefresh').onclick = muat;
 
   /* ---------- Auto-refresh 30 saat ---------- */

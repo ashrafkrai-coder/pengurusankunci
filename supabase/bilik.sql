@@ -1,0 +1,30 @@
+-- Senarai bilik diambil daripada tab Nama_Bilik (Google Sheet "Pengurusan Kunci SMKTM").
+-- Jalankan dalam Supabase SQL Editor selepas schema.sql. Selamat dijalankan semula.
+insert into public.bilik (id_kunci, nama_bilik) values
+  ('MAKMAL-1', 'MAKMAL KOMP'),
+  ('BILIK-PSV', 'BILIK PSV'),
+  ('SURAU', 'SURAU'),
+  ('BILIK-GURU-1', 'BILIK GURU 1'),
+  ('BILIK-PSS', 'BILIK PSS'),
+  ('DEWAN-LJ', 'DEWAN LJ'),
+  ('AULA-PERDANA', 'AULA PERDANA'),
+  ('BIDARI-CORNER', 'BIDARI CORNER'),
+  ('BILIK-DISIPIN', 'BILIK DISIPIN'),
+  ('BILIK-MEDIA', 'BILIK MEDIA'),
+  ('BILIK-UBK', 'BILIK UBK'),
+  ('BILIK-GURU-2', 'BILIK GURU 2'),
+  ('BILIK-SPBT', 'BILIK SPBT'),
+  ('VILLA-SUKAN', 'VILLA SUKAN'),
+  ('BILIK-PAM-AIR', 'BILIK PAM AIR'),
+  ('BILIK-ELEKTRIK', 'BILIK ELEKTRIK'),
+  ('BILIK-ICC', 'BILIK ICC'),
+  ('KOPERASI', 'KOPERASI'),
+  ('MAKMAL-DELTA', 'MAKMAL DELTA'),
+  ('MAKMAL-GAMMA', 'MAKMAL GAMMA'),
+  ('BILIK-KOKURIKULUM', 'BILIK KOKURIKULUM'),
+  ('STOR-SPBT', 'STOR SPBT'),
+  ('BENGKEL-RBT-1', 'BENGKEL RBT 1'),
+  ('BENGKEL-RBT-2', 'BENGKEL RBT 2'),
+  ('BILIK-KESIHATAN', 'BILIK KESIHATAN'),
+  ('BILIK-GKMP', 'BILIK GKMP')
+on conflict (id_kunci) do nothing;

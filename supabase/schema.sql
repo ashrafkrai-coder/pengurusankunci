@@ -1,0 +1,309 @@
+-- =====================================================================
+--  SISTEM PENGURUSAN KUNCI (NFC) - SKEMA SUPABASE
+--  Backend sistem kunci (jadual + fungsi RPC).
+--
+--  Cara guna: Supabase Dashboard > SQL Editor > New query > tampal fail ini > Run.
+--  Selamat dijalankan semula (idempotent): data sedia ada TIDAK dipadam.
+--
+--  Reka bentuk: semua logik berjalan di dalam pangkalan data sebagai fungsi RPC
+--  (api_daftar, api_login, api_logout, api_dashboard, api_imbas). PWA memanggil
+--  /rest/v1/rpc/<fungsi> dengan kunci publishable (anon). Jadual TIDAK boleh dibaca
+--  terus oleh anon (RLS aktif tanpa polisi + semua kebenaran dicabut), jadi hash kata
+--  laluan dan sesi tidak pernah terdedah. Setiap tindakan = SATU panggilan rangkaian.
+-- =====================================================================
+
+create extension if not exists pgcrypto with schema extensions;
+create schema if not exists app;                 -- fungsi dalaman (tidak didedahkan melalui API)
+revoke all on schema app from public;
+
+-- ---------------------------------------------------------------------
+--  JADUAL
+-- ---------------------------------------------------------------------
+-- Senarai bilik/kunci (ganti tab Nama_Bilik). Tambah/ubah bilik melalui Table Editor.
+create table if not exists public.bilik (
+  id_kunci   text primary key,
+  nama_bilik text not null,
+  dicipta    timestamptz not null default now()
+);
+
+-- Sejarah imbasan (ganti tab Log_Imbas). Status semasa dikira daripada rekod terakhir.
+create table if not exists public.log_imbas (
+  id        bigint generated always as identity primary key,
+  masa      timestamptz not null default now(),
+  id_kunci  text not null,
+  nama_guru text not null,
+  tindakan  text not null check (tindakan in ('Ambil', 'Pulang'))
+);
+create index if not exists log_imbas_kunci_idx on public.log_imbas (id_kunci, id desc);
+
+-- Akaun guru (ganti tab Pengguna). Hash bcrypt (garam terkandung dalam hash).
+-- Untuk menyekat akaun: tukar status kepada selain 'Aktif' (cth 'Digantung').
+create table if not exists public.pengguna (
+  username      text primary key,
+  nama_penuh    text not null,
+  hash          text not null,
+  peranan       text not null default 'Pentadbir',
+  status        text not null default 'Aktif',
+  tarikh_daftar timestamptz not null default now()
+);
+
+-- Sesi log masuk (ganti Script Properties). Hanya cincangan token disimpan.
+create table if not exists public.sesi (
+  token_hash text primary key,
+  username   text not null references public.pengguna (username) on delete cascade on update cascade,
+  tamat      timestamptz not null
+);
+create index if not exists sesi_tamat_idx on public.sesi (tamat);
+
+-- Kiraan cubaan log masuk gagal (ganti CacheService)
+create table if not exists public.gagal_login (
+  username text primary key,
+  kiraan   int not null default 0,
+  mula     timestamptz not null default now()
+);
+
+-- Kunci sentiasa HURUF BESAR tanpa ruang tepi, supaya ?kunci=makmal-1 sepadan MAKMAL-1
+create or replace function app.normalkan_kunci() returns trigger language plpgsql as $$
+begin
+  new.id_kunci := upper(trim(new.id_kunci));
+  return new;
+end $$;
+drop trigger if exists bilik_normal on public.bilik;
+create trigger bilik_normal before insert or update on public.bilik for each row execute function app.normalkan_kunci();
+drop trigger if exists log_normal on public.log_imbas;
+create trigger log_normal before insert or update on public.log_imbas for each row execute function app.normalkan_kunci();
+
+-- Kunci pintu jadual: anon/authenticated tidak boleh baca atau tulis terus.
+alter table public.bilik       enable row level security;
+alter table public.log_imbas   enable row level security;
+alter table public.pengguna    enable row level security;
+alter table public.sesi        enable row level security;
+alter table public.gagal_login enable row level security;
+revoke all on public.bilik, public.log_imbas, public.pengguna, public.sesi, public.gagal_login from anon, authenticated, public;
+
+-- ---------------------------------------------------------------------
+--  FUNGSI DALAMAN (schema app)
+-- ---------------------------------------------------------------------
+create or replace function app.ralat(msg text) returns jsonb language sql immutable as $$
+  select jsonb_build_object('ok', false, 'error', msg)
+$$;
+
+-- ISO 8601 zon Malaysia: 2026-11-21T20:05:00+08:00
+create or replace function app.iso(t timestamptz) returns text language sql immutable as $$
+  select case when t is null then '' else
+    to_char(t at time zone 'Asia/Kuala_Lumpur', 'YYYY-MM-DD"T"HH24:MI:SS') || '+08:00' end
+$$;
+
+-- Paparan 12 jam dengan waktu: "21/11/2026 8:05 pagi"
+create or replace function app.masa12(t timestamptz) returns text language plpgsql immutable as $$
+declare
+  l timestamp := t at time zone 'Asia/Kuala_Lumpur';
+  j int := extract(hour from l);
+begin
+  return to_char(l, 'DD/MM/YYYY') || ' ' || coalesce(nullif(j % 12, 0), 12) || ':' || to_char(l, 'MI') || ' ' ||
+    case when j < 12 then 'pagi' when j < 14 then 'T/hari' when j < 19 then 'petang' else 'malam' end;
+end $$;
+
+-- Pengguna bagi token sesi yang sah & akaun masih Aktif (tiada baris jika tidak sah)
+create or replace function app.sesi_pengguna(p_token text)
+returns table (username text, nama text, peranan text)
+language sql stable security definer set search_path = public, extensions as $$
+  select p.username, p.nama_penuh, p.peranan
+  from public.sesi s join public.pengguna p on p.username = s.username
+  where s.token_hash = encode(extensions.digest(coalesce(p_token, ''), 'sha256'), 'hex')
+    and s.tamat > now() and p.status = 'Aktif'
+$$;
+
+create or replace function app.buat_sesi(p_username text, p_ingat boolean) returns text
+language plpgsql security definer set search_path = public, extensions as $$
+declare
+  tok text := replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '');
+begin
+  delete from public.sesi where tamat < now();
+  insert into public.sesi (token_hash, username, tamat)
+  values (encode(extensions.digest(tok, 'sha256'), 'hex'), p_username,
+          now() + case when p_ingat then interval '90 days' else interval '7 days' end);
+  return tok;
+end $$;
+
+revoke all on function app.sesi_pengguna(text), app.buat_sesi(text, boolean) from public, anon, authenticated;
+
+-- ---------------------------------------------------------------------
+--  API (dipanggil PWA melalui /rest/v1/rpc/<nama>, badan: {"b": {...}})
+--  Ralat dipulangkan sebagai {ok:false,error} (bukan exception) supaya
+--  kiraan cubaan gagal kekal disimpan.
+-- ---------------------------------------------------------------------
+create or replace function public.api_daftar(b jsonb) returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+declare
+  uname text := lower(trim(coalesce(b->>'username', '')));
+  nm    text := trim(coalesce(b->>'nama', ''));
+  pw    text := coalesce(b->>'password', '');
+  tok   text;
+begin
+  if uname !~ '^[a-z0-9._@-]{3,60}$' then return app.ralat('Nama pengguna mesti 3-60 aksara (huruf, nombor, . _ @ -).'); end if;
+  if nm = '' or length(nm) > 80 then return app.ralat('Nama penuh diperlukan (maksimum 80 aksara).'); end if;
+  if nm ~ '^[=+@-]' then return app.ralat('Nama penuh tidak boleh bermula dengan = + - @'); end if;
+  if length(pw) < 8 then return app.ralat('Kata laluan mesti sekurang-kurangnya 8 aksara.'); end if;
+  if octet_length(pw) > 72 then return app.ralat('Kata laluan terlalu panjang (maksimum 72 aksara).'); end if;
+
+  begin
+    insert into public.pengguna (username, nama_penuh, hash)
+    values (uname, nm, crypt(pw, gen_salt('bf', 8)));
+  exception when unique_violation then
+    return app.ralat('Nama pengguna sudah wujud.');
+  end;
+
+  tok := app.buat_sesi(uname, coalesce((b->>'ingat')::boolean, false));
+  return jsonb_build_object('ok', true, 'token', tok, 'mesej', 'Pendaftaran berjaya.',
+    'pengguna', jsonb_build_object('username', uname, 'nama', nm, 'peranan', 'Pentadbir'));
+end $$;
+
+create or replace function public.api_login(b jsonb) returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+declare
+  uname text := left(lower(trim(coalesce(b->>'username', ''))), 60);
+  pw    text := coalesce(b->>'password', '');
+  g     public.gagal_login;
+  u     public.pengguna;
+  tok   text;
+begin
+  if uname = '' or pw = '' then return app.ralat('Sila isi nama pengguna dan kata laluan.'); end if;
+
+  select * into g from public.gagal_login where username = uname;
+  if found and g.kiraan >= 5 and g.mula > now() - interval '15 minutes' then
+    return app.ralat('Terlalu banyak cubaan gagal. Cuba lagi selepas 15 minit.');
+  end if;
+
+  select * into u from public.pengguna where username = uname;
+  if not found or u.hash <> crypt(pw, u.hash) then
+    delete from public.gagal_login where mula < now() - interval '15 minutes';
+    insert into public.gagal_login as t (username, kiraan, mula) values (uname, 1, now())
+    on conflict (username) do update set
+      kiraan = case when t.mula > now() - interval '15 minutes' then t.kiraan + 1 else 1 end,
+      mula   = case when t.mula > now() - interval '15 minutes' then t.mula else now() end;
+    return app.ralat('Nama pengguna atau kata laluan salah.');
+  end if;
+
+  delete from public.gagal_login where username = uname;
+  if u.status <> 'Aktif' then return app.ralat('Akaun anda telah disekat. Sila hubungi admin.'); end if;
+
+  tok := app.buat_sesi(uname, coalesce((b->>'ingat')::boolean, false));
+  return jsonb_build_object('ok', true, 'token', tok,
+    'pengguna', jsonb_build_object('username', u.username, 'nama', u.nama_penuh, 'peranan', u.peranan));
+end $$;
+
+create or replace function public.api_logout(b jsonb) returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+begin
+  delete from public.sesi
+  where token_hash = encode(extensions.digest(coalesce(b->>'token', ''), 'sha256'), 'hex');
+  return jsonb_build_object('ok', true);
+end $$;
+
+create or replace function public.api_dashboard(b jsonb) returns jsonb
+language plpgsql stable security definer set search_path = public, extensions as $$
+declare
+  u   record;
+  res jsonb;
+begin
+  select * into u from app.sesi_pengguna(b->>'token');
+  if not found then
+    return jsonb_build_object('ok', false, 'auth', false, 'error', 'Sesi tamat atau tidak sah. Sila log masuk semula.');
+  end if;
+
+  with l as (
+    select id, masa, id_kunci, nama_guru, tindakan,
+           lead(tindakan)  over w as n_t, lead(masa) over w as n_m, lead(nama_guru) over w as n_g,
+           lag(tindakan)   over w as p_t
+    from public.log_imbas
+    window w as (partition by id_kunci order by id)
+  ),
+  ent as (
+    -- Ambil (berpasangan dengan Pulang seterusnya jika ada)
+    select l.id, l.masa as urut,
+           jsonb_build_object('idKunci', l.id_kunci, 'bilik', coalesce(b.nama_bilik, l.id_kunci), 'guru', l.nama_guru,
+             'masaAmbil', app.iso(l.masa),
+             'masaPulang', case when l.n_t = 'Pulang' then app.iso(l.n_m) else '' end,
+             'guruPulang', case when l.n_t = 'Pulang' then l.n_g else '' end,
+             'status', case when l.n_t = 'Pulang' then 'Sudah Pulang' else 'Belum Pulang' end) as obj
+    from l left join public.bilik b on b.id_kunci = l.id_kunci
+    where l.tindakan = 'Ambil'
+    union all
+    -- Pulang tanpa Ambil sebelumnya
+    select l.id, l.masa,
+           jsonb_build_object('idKunci', l.id_kunci, 'bilik', coalesce(b.nama_bilik, l.id_kunci), 'guru', l.nama_guru,
+             'masaAmbil', '', 'masaPulang', app.iso(l.masa), 'guruPulang', l.nama_guru, 'status', 'Sudah Pulang')
+    from l left join public.bilik b on b.id_kunci = l.id_kunci
+    where l.tindakan = 'Pulang' and l.p_t is distinct from 'Ambil'
+  )
+  select jsonb_build_object(
+    'ok', true,
+    'dijana', app.iso(now()),
+    'bilik', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'idKunci', b.id_kunci, 'nama', b.nama_bilik,
+               'status', case when t.tindakan = 'Ambil' then 'Ambil' else 'Pulang' end,
+               'pemegang', case when t.tindakan = 'Ambil' then t.nama_guru else '-' end,
+               'masaAmbil', case when t.tindakan = 'Ambil' then app.iso(t.masa) else '' end)
+             order by b.dicipta, b.id_kunci)
+      from public.bilik b
+      left join lateral (select x.tindakan, x.nama_guru, x.masa from public.log_imbas x
+                         where x.id_kunci = b.id_kunci order by x.id desc limit 1) t on true
+    ), '[]'::jsonb),
+    'log', coalesce((select jsonb_agg(x.obj order by x.urut desc, x.id desc)
+                     from (select * from ent order by urut desc, id desc limit 300) x), '[]'::jsonb),
+    'jumlahLog', (select count(*) from ent),
+    'pengguna', jsonb_build_object('username', u.username, 'nama', u.nama)
+  ) into res;
+  return res;
+end $$;
+
+create or replace function public.api_imbas(b jsonb) returns jsonb
+language plpgsql security definer set search_path = public, extensions as $$
+declare
+  u    record;
+  kid  text := upper(trim(coalesce(b->>'kunci', '')));
+  bk   public.bilik;
+  lst  public.log_imbas;
+  tind text;
+  now_ timestamptz := clock_timestamp();
+begin
+  select * into u from app.sesi_pengguna(b->>'token');
+  if not found then
+    return jsonb_build_object('ok', false, 'auth', false, 'error', 'Hanya guru berdaftar boleh merekod kunci. Sila log masuk.');
+  end if;
+  if kid = '' then return app.ralat('ID kunci kosong. Semak URL tag NFC (mesti berakhir dengan ?kunci=ID_KUNCI).'); end if;
+  select * into bk from public.bilik where id_kunci = kid;
+  if not found then return app.ralat('ID kunci "' || left(coalesce(b->>'kunci', ''), 80) || '" tiada dalam senarai bilik.'); end if;
+
+  -- Serialkan imbasan bagi kunci yang sama (dua tap serentak tidak menghasilkan dua rekod)
+  perform pg_advisory_xact_lock(hashtext('imbas:' || kid));
+  select * into lst from public.log_imbas where id_kunci = kid order by id desc limit 1;
+
+  -- Imbasan berganda oleh guru yang sama dalam 60 saat: pulangkan rekod sedia ada
+  if found and lower(lst.nama_guru) = lower(u.nama) and now_ - lst.masa < interval '60 seconds' then
+    return jsonb_build_object('ok', true, 'ulang', true, 'bilik', bk.nama_bilik,
+      'tindakan', lst.tindakan, 'guru', lst.nama_guru, 'masa', app.masa12(lst.masa));
+  end if;
+
+  tind := case when found and lst.tindakan = 'Ambil' then 'Pulang' else 'Ambil' end;
+  insert into public.log_imbas (masa, id_kunci, nama_guru, tindakan) values (now_, kid, u.nama, tind);
+  return jsonb_build_object('ok', true, 'bilik', bk.nama_bilik, 'tindakan', tind, 'guru', u.nama, 'masa', app.masa12(now_));
+end $$;
+
+-- Hanya 5 fungsi API didedahkan kepada PWA
+revoke all on function public.api_daftar(jsonb), public.api_login(jsonb), public.api_logout(jsonb),
+                       public.api_dashboard(jsonb), public.api_imbas(jsonb) from public;
+grant execute on function public.api_daftar(jsonb), public.api_login(jsonb), public.api_logout(jsonb),
+                          public.api_dashboard(jsonb), public.api_imbas(jsonb) to anon, authenticated;
+
+-- ---------------------------------------------------------------------
+--  DATA CONTOH (buang tanda komen & ubah mengikut bilik sebenar)
+--  ID_Kunci mesti sama dengan ?kunci=ID pada tag NFC.
+-- ---------------------------------------------------------------------
+-- insert into public.bilik (id_kunci, nama_bilik) values
+--   ('MAKMAL-KOMPUTER-1', 'Makmal Komputer 1'),
+--   ('BILIK-PENDIDIKAN-SENI', 'Bilik Pendidikan Seni'),
+--   ('BILIK-MUZIK', 'Bilik Muzik')
+-- on conflict (id_kunci) do nothing;
